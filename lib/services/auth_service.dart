@@ -1,60 +1,114 @@
-import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
-  static final Map<String, String> _fakeUsers = {
-    'employee1': '12345',
-    'employee2': '12345',
-  };
+  static const String baseUrl = 'http://10.0.2.2:8080';
+  static const String loginEndpoint = '/api/v1/userDetail/login';
 
-  static Map<String, dynamic> _userData(String username) => {
-        'username': username,
-        'name': username == 'employee1' ? 'John Doe' : 'Jane Smith',
-        'avatar': username == 'employee1'
-            ? 'https://randomuser.me/api/portraits/men/1.jpg'
-            : 'https://randomuser.me/api/portraits/women/1.jpg',
-      };
+  static String? _token;
+  static Map<String, dynamic>? _currentUser;
 
-  static String? _currentUser;
+  // Check if user is logged in
+  static Future<bool> isLoggedIn() async {
+    if (_token != null && _currentUser != null) {
+      return true;
+    }
 
-  // Đăng nhập
-  static Future<Map<String, dynamic>> login(String username, String password) async {
-    await Future.delayed(const Duration(seconds: 1));
-    if (_fakeUsers[username] == password) {
-      _currentUser = username;
+    // Try to get token from storage
+    final prefs = await SharedPreferences.getInstance();
+    final storedToken = prefs.getString('auth_token');
+    final storedUser = prefs.getString('user_data');
+
+    if (storedToken != null && storedUser != null) {
+      _token = storedToken;
+      _currentUser = jsonDecode(storedUser);
+      return true;
+    }
+
+    return false;
+  }
+
+  // Login method
+  static Future<Map<String, dynamic>> login(String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl$loginEndpoint'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+        }),
+      );
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && responseData['status'] == 'SUCCESS') {
+        // Store token and user data
+        _token = responseData['data']['token'];
+        _currentUser = responseData['data']['user'];
+
+        // Save to storage
+        final prefs = await SharedPreferences.getInstance();
+        prefs.setString('auth_token', _token!);
+        prefs.setString('user_data', jsonEncode(_currentUser));
+
+        // Map user data to the format expected by the app
+        final mappedUser = {
+          'name': _currentUser!['fullName'],
+          'username': _currentUser!['email'],
+          'avatar': _currentUser!['imageUrl'] ?? 'https://cdn.pixabay.com/photo/2023/02/18/11/00/icon-7797704_1280.png',
+        };
+
+        return {
+          'success': true,
+          'message': responseData['message'] ?? 'Đăng nhập thành công',
+          'user': mappedUser,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': responseData['message'] ?? 'Đăng nhập thất bại',
+        };
+      }
+    } catch (e) {
       return {
-        'success': true,
-        'user': _userData(username),
+        'success': false,
+        'message': 'Lỗi kết nối: ${e.toString()}',
       };
-    } else {
-      return {'success': false, 'message': 'Sai tài khoản hoặc mật khẩu'};
     }
   }
 
-  // Lấy thông tin tài khoản hiện tại
-  static Future<Map<String, dynamic>?> getProfile() async {
-    await Future.delayed(const Duration(milliseconds: 500));
+  // Get current user data
+  static Map<String, dynamic>? getCurrentUser() {
     if (_currentUser != null) {
-      return _userData(_currentUser!);
+      return {
+        'name': _currentUser!['fullName'],
+        'username': _currentUser!['email'],
+        'avatar': _currentUser!['imageUrl'] ?? 'https://cdn.pixabay.com/photo/2023/02/18/11/00/icon-7797704_1280.png',
+      };
     }
     return null;
   }
 
-  // Đổi mật khẩu (fake)
-  static Future<Map<String, dynamic>> changePassword(String oldPass, String newPass) async {
-    await Future.delayed(const Duration(seconds: 1));
-    if (_currentUser == null) {
-      return {'success': false, 'message': 'Chưa đăng nhập'};
-    }
-    if (_fakeUsers[_currentUser!] != oldPass) {
-      return {'success': false, 'message': 'Mật khẩu cũ không đúng'};
-    }
-    _fakeUsers[_currentUser!] = newPass;
-    return {'success': true, 'message': 'Đổi mật khẩu thành công'};
+  // Logout method
+  static Future<void> logout() async {
+    _token = null;
+    _currentUser = null;
+
+    // Clear from storage
+    final prefs = await SharedPreferences.getInstance();
+    prefs.remove('auth_token');
+    prefs.remove('user_data');
   }
 
-  // Đăng xuất
-  static Future<void> logout() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    _currentUser = null;
+  // Change password method
+  static Future<Map<String, dynamic>> changePassword(String oldPass, String newPass) async {
+    // This would need to be updated to connect to a real password change endpoint
+    await Future.delayed(const Duration(seconds: 1));
+    return {
+      'success': true,
+      'message': 'Đổi mật khẩu thành công',
+    };
   }
 }

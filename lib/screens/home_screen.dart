@@ -4,6 +4,9 @@ import 'package:salomon_bottom_bar/salomon_bottom_bar.dart';
 
 import '../services/attendance_service.dart';
 import '../services/auth_service.dart';
+import '../services/order_service.dart';
+import '../services/salary_service.dart';
+import '../services/schedule_service.dart';
 import 'account_screen.dart';
 import 'login_screen.dart';
 import '../services/leave_service.dart';
@@ -18,6 +21,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   final Color pinkColor = const Color(0xFFFDB5B9);
+  final Color mainColor = const Color(0xFFFDB5B9);
   late final ImageProvider _avatarImage;
   bool _imageLoaded = false;
   bool _checkedIn = false;
@@ -30,74 +34,485 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   String _earlyCheckoutStatus = 'none'; // 'none', 'pending', 'approved', 'rejected'
   String _earlyCheckoutReason = '';
   DateTime? _earlyCheckoutRequestTime;
+
   @override
   Widget build(BuildContext context) {
-    final List<Widget> _pages = [
-      _buildHomeContent(),
-      _buildAttendanceHistory(),
-      AccountScreen(
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: _currentIndex == 0
+          ? _buildHomeContent()
+          : _currentIndex == 1
+          ? _buildAttendanceHistory()
+          : _currentIndex == 2
+          ? _buildWorkScheduleTab()
+          : _currentIndex == 3
+          ? _buildLeaveRequestPage()
+          : AccountScreen(
         user: widget.user,
         onLogout: _handleLogout,
       ),
-      _buildLeaveRequestPage(),
-    ];
-
-    return Scaffold(
-      body: _pages[_currentIndex],
-      backgroundColor: Colors.white,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: pinkColor.withOpacity(0.15),
-              blurRadius: 8,
-              offset: const Offset(0, -3),
-            ),
-          ],
-        ),
-        child: SalomonBottomBar(
-          currentIndex: _currentIndex,
-          onTap: (i) => setState(() => _currentIndex = i),
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          items: [
-            SalomonBottomBarItem(
-              icon: const Icon(Icons.home_rounded),
-              title: const Text("Trang chủ"),
-              selectedColor: pinkColor,
-            ),
-            SalomonBottomBarItem(
-              icon: const Icon(Icons.history_edu_rounded),
-              title: const Text("Lịch sử"),
-              selectedColor: pinkColor,
-            ),
-            SalomonBottomBarItem(
-              icon: _buildAvatarIcon(),
-              title: const Text("Tài khoản"),
-              selectedColor: pinkColor,
-            ),
-            SalomonBottomBarItem(
-              icon: const Icon(Icons.beach_access_rounded),
-              title: const Text("Nghỉ phép"),
-              selectedColor: pinkColor,
-            ),
-          ],
-        ),
+      bottomNavigationBar: SalomonBottomBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: [
+          SalomonBottomBarItem(
+            icon: const Icon(Icons.home_outlined),
+            activeIcon: const Icon(Icons.home),
+            title: const Text('Trang chủ'),
+            selectedColor: pinkColor,
+          ),
+          SalomonBottomBarItem(
+            icon: const Icon(Icons.history_outlined),
+            activeIcon: const Icon(Icons.history),
+            title: const Text('Lịch sử'),
+            selectedColor: pinkColor,
+          ),
+          SalomonBottomBarItem(
+            icon: const Icon(Icons.calendar_month_outlined),
+            activeIcon: const Icon(Icons.calendar_month),
+            title: const Text('Lịch làm'),
+            selectedColor: pinkColor,
+          ),
+          SalomonBottomBarItem(
+            icon: const Icon(Icons.beach_access_outlined),
+            activeIcon: const Icon(Icons.beach_access),
+            title: const Text('Nghỉ phép'),
+            selectedColor: pinkColor,
+          ),
+          SalomonBottomBarItem(
+            icon: const Icon(Icons.person_outline),
+            activeIcon: const Icon(Icons.person),
+            title: const Text('Tài khoản'),
+            selectedColor: pinkColor,
+          ),
+        ],
       ),
-      floatingActionButton: _currentIndex == 0 ? _buildAttendanceButton() : null,
+    );
+  }
+  Widget _buildHomeContent() {
+    final now = DateTime.now();
+    final dateFormat = DateFormat('EEEE, dd/MM/yyyy');
+    final timeFormat = DateFormat('HH:mm');
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 80),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeaderSection(now, dateFormat, timeFormat, mainColor),
+
+          // Attendance Status Card
+          _buildAttendanceStatusCard(timeFormat),
+
+          // Estimated Salary Card
+          _buildSalarySection(),
+
+          // Summary Cards
+          const SizedBox(height: 16),
+          _buildSummaryCards(),
+
+          // Weekly Stats
+          const SizedBox(height: 16),
+          _buildWeeklyStats(),
+
+          // Recent Activities
+          const SizedBox(height: 16),
+          _buildRecentAttendanceSection(timeFormat, dateFormat),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceStatusCard(DateFormat timeFormat) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: ScheduleService.getTodayStatus(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Card(
+            margin: EdgeInsets.all(16),
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        final data = snapshot.data ?? {'hasShift': false, 'message': 'Đang tải...', 'status': 'Unknown'};
+        final hasShift = data['hasShift'] as bool;
+
+        if (!hasShift) {
+          return Card(
+            margin: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.event_busy, color: Colors.grey[600], size: 26),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Trạng thái hôm nay',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    data['message'] ?? 'Không có ca làm việc hôm nay',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final schedules = (data['schedules'] as List<dynamic>);
+
+        return Card(
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.event_available, color: mainColor, size: 26),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Trạng thái hôm nay',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                ...schedules.map((schedule) {
+                  final shift = schedule['shift'] as String;
+                  final status = schedule['status'] as String;
+                  final checkIn = schedule['checkInTime'] as String;
+                  final checkOut = schedule['checkOutTime'] as String;
+
+                  Color statusColor;
+                  IconData statusIcon;
+
+                  switch (status) {
+                    case 'On Time':
+                      statusColor = Colors.green;
+                      statusIcon = Icons.check_circle;
+                      break;
+                    case 'Late':
+                      statusColor = Colors.orange;
+                      statusIcon = Icons.warning;
+                      break;
+                    case 'Absent':
+                      statusColor = Colors.red;
+                      statusIcon = Icons.cancel;
+                      break;
+                    case 'Working':
+                      statusColor = Colors.blue;
+                      statusIcon = Icons.work;
+                      break;
+                    default:
+                      statusColor = Colors.grey;
+                      statusIcon = Icons.schedule;
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(statusIcon, color: statusColor),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Ca $shift: $checkIn - $checkOut',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                status,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildWorkScheduleTab() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: ScheduleService.getUserSchedule(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text('Lỗi: ${snapshot.error}', style: const TextStyle(color: Colors.red)),
+          );
+        }
+
+        final schedules = snapshot.data ?? [];
+
+        if (schedules.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
+                const SizedBox(height: 16),
+                Text(
+                  'Không có lịch làm việc',
+                  style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Group schedules by date
+        final Map<String, List<Map<String, dynamic>>> schedulesByDate = {};
+        for (var schedule in schedules) {
+          final date = schedule['formattedDate'] as String;
+          if (!schedulesByDate.containsKey(date)) {
+            schedulesByDate[date] = [];
+          }
+          schedulesByDate[date]!.add(schedule);
+        }
+
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // Legend
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Chú thích',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _buildLegendItem(color: Colors.green, text: 'Đúng giờ'),
+                      const SizedBox(width: 16),
+                      _buildLegendItem(color: Colors.orange, text: 'Đi muộn'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _buildLegendItem(color: Colors.red, text: 'Vắng mặt'),
+                      const SizedBox(width: 16),
+                      _buildLegendItem(color: Colors.blue, text: 'Đang làm việc'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Schedule cards
+            ...schedulesByDate.entries.map((entry) {
+              final date = entry.key;
+              final daySchedules = entry.value;
+              final firstSchedule = daySchedules.first;
+              final weekday = firstSchedule['weekday'] as String;
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: mainColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              weekday.substring(0, 3).toUpperCase(),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: mainColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            date,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      ...daySchedules.map((schedule) {
+                        final shift = schedule['shift'] as String;
+                        final checkIn = schedule['checkInTime'] as String;
+                        final checkOut = schedule['checkOutTime'] as String;
+                        final status = schedule['status'] as String;
+
+                        Color statusColor;
+                        IconData statusIcon;
+
+                        switch (status) {
+                          case 'On Time':
+                            statusColor = Colors.green;
+                            statusIcon = Icons.check_circle;
+                            break;
+                          case 'Late':
+                            statusColor = Colors.orange;
+                            statusIcon = Icons.warning;
+                            break;
+                          case 'Absent':
+                            statusColor = Colors.red;
+                            statusIcon = Icons.cancel;
+                            break;
+                          case 'Working':
+                            statusColor = Colors.blue;
+                            statusIcon = Icons.work;
+                            break;
+                          default:
+                            statusColor = Colors.grey;
+                            statusIcon = Icons.schedule;
+                        }
+
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(statusIcon, color: statusColor),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Ca $shift',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text('$checkIn - $checkOut'),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  status,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildAttendanceButton() {
     final now = DateTime.now();
     final bool isCheckedIn = _checkedIn;
-    final bool isWorkTime = now.hour < 17 || (now.hour == 17 && now.minute < 30);
+    final bool isWorkTime = now.hour < 17 ||
+        (now.hour == 17 && now.minute < 30);
     final bool isOnLeave = LeaveService.isOnLeaveForDate(now);
 
     if (isOnLeave) {
       // User is on approved leave
       return FloatingActionButton.extended(
-        onPressed: null, // Disabled
+        onPressed: null,
+        // Disabled
         backgroundColor: Colors.grey.shade300,
         icon: const Icon(Icons.event_busy, color: Colors.grey),
         label: const Text(
@@ -112,9 +527,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         onPressed: _isProcessingAttendance ? null : _handleAttendanceAction,
         backgroundColor: Colors.green,
         icon: _isProcessingAttendance
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+            ? const SizedBox(width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+                color: Colors.white, strokeWidth: 2))
             : const Icon(Icons.login),
-        label: const Text('Check in', style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text(
+            'Check in', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       );
@@ -124,7 +543,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         onPressed: () => _showEarlyCheckoutStatusDialog(),
         backgroundColor: Colors.amber,
         icon: const Icon(Icons.hourglass_top),
-        label: const Text('Đang chờ duyệt về sớm', style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text('Đang chờ duyệt về sớm',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       );
@@ -134,7 +554,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         onPressed: () => _showEarlyCheckoutDialog(),
         backgroundColor: Colors.orange,
         icon: const Icon(Icons.exit_to_app),
-        label: const Text('Yêu cầu về sớm', style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text(
+            'Yêu cầu về sớm', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       );
@@ -145,8 +566,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         backgroundColor: Colors.blue,
         icon: const Icon(Icons.logout, size: 22),
         label: _isProcessingAttendance
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-            : const Text('Checkout', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ? const SizedBox(width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+                color: Colors.white, strokeWidth: 2))
+            : const Text('Checkout',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         elevation: 4,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       );
@@ -221,6 +646,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       }
     });
   }
+
   @override
   void initState() {
     super.initState();
@@ -343,48 +769,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Widget _buildHomeContent() {
-    final now = DateTime.now();
-    final dateFormat = DateFormat('dd/MM/yyyy');
-    final timeFormat = DateFormat('HH:mm');
-    final weekday = _getWeekday(now.weekday);
-
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with greeting
-          _buildHeaderSection(now, dateFormat, timeFormat, weekday),
-
-          // Quick Action Buttons
-          _buildQuickActionButtons(),
-
-          // Attendance status card
-          _buildAttendanceStatusCard(timeFormat),
-
-          // Summary cards
-          _buildSummaryCards(),
-
-          // Weekly stats visualization
-          _buildWeeklyStats(),
-
-          // Recent attendance
-          _buildRecentAttendanceSection(timeFormat, dateFormat),
-        ],
-      ),
-    );
-  }
-
   Widget _buildHeaderSection(DateTime now, DateFormat dateFormat,
-      DateFormat timeFormat, String weekday) {
+      DateFormat timeFormat, Color color) {
+    // Get weekday name using DateFormat
+    final String weekdayName = DateFormat('EEEE').format(now);
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            pinkColor,
-            pinkColor.withOpacity(0.7),
+            color,
+            color.withOpacity(0.7),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -395,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ),
         boxShadow: [
           BoxShadow(
-            color: pinkColor.withOpacity(0.3),
+            color: color.withOpacity(0.3),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -417,7 +813,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 CircleAvatar(
                   radius: 24,
                   backgroundColor: Colors.white,
-                  child: Icon(Icons.person, color: pinkColor),
+                  child: Icon(Icons.person, color: color),
                 ),
               const SizedBox(width: 12),
               Column(
@@ -444,32 +840,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           const SizedBox(height: 15),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$weekday, ${dateFormat.format(now)}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${dateFormat.format(now)}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Giờ hiện tại: ${timeFormat.format(now)}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withOpacity(0.9),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Giờ hiện tại: ${timeFormat.format(now)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               Container(
+                constraints: const BoxConstraints(maxWidth: 110),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
+                    horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
@@ -484,11 +883,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Text(
                   'ID: ${widget.user["username"]}',
                   style: TextStyle(
-                    color: pinkColor,
+                    color: color,
                     fontWeight: FontWeight.bold,
+                    fontSize: 13,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
-              ),
+              )
             ],
           ),
         ],
@@ -593,83 +995,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildAttendanceStatusCard(DateFormat timeFormat) {
-    final now = DateTime.now();
-    final isWorkTime = now.hour < 17 || (now.hour == 17 && now.minute < 30);
-    final isOnLeave = LeaveService.isOnLeaveForDate(now);
-
-    String statusText;
-    Color statusColor;
-
-    if (isOnLeave) {
-      statusText = 'Đã được nghỉ phép';
-      statusColor = Colors.purple;
-    } else if (!_checkedIn) {
-      statusText = 'Chưa điểm danh';
-      statusColor = Colors.red;
-    } else if (_checkedIn && _checkoutTime == null) {
-      statusText = 'Đã điểm danh lúc ${timeFormat.format(_checkinTime!)}';
-      statusColor = Colors.green;
-    } else {
-      statusText = 'Đã hoàn thành ngày làm việc';
-      statusColor = Colors.blue;
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Card(
-        elevation: 2,
-        shadowColor: Colors.black26,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isOnLeave ? Icons.event_busy :
-                  (_checkedIn ? Icons.check_circle : Icons.access_time),
-                  color: statusColor,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Trạng thái hôm nay',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      statusText,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: statusColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -981,54 +1306,61 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final reasonController = TextEditingController();
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Xin phê duyệt về sớm'),
-        content: TextField(
-          controller: reasonController,
-          decoration: const InputDecoration(labelText: 'Lý do'),
-          maxLines: 2,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Hủy'),
+      builder: (dialogContext) =>
+          AlertDialog(
+            title: const Text('Xin phê duyệt về sớm'),
+            content: TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(labelText: 'Lý do'),
+              maxLines: 2,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  setState(() => _isProcessingAttendance = true);
+                  final result = await AttendanceService.requestEarlyCheckout(
+                      reasonController.text);
+                  setState(() {
+                    _isProcessingAttendance = false;
+                    if (result['success']) {
+                      _earlyCheckoutStatus = 'pending';
+                      _earlyCheckoutReason = reasonController.text;
+                      _earlyCheckoutRequestTime = DateTime.now();
+                    }
+                  });
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            Icon(result['success'] ? Icons.check_circle : Icons
+                                .error, color: Colors.white),
+                            const SizedBox(width: 10),
+                            Text(result['message']),
+                          ],
+                        ),
+                        backgroundColor: result['success']
+                            ? Colors.green
+                            : Colors.red,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Gửi'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              setState(() => _isProcessingAttendance = true);
-              final result = await AttendanceService.requestEarlyCheckout(reasonController.text);
-              setState(() {
-                _isProcessingAttendance = false;
-                if (result['success']) {
-                  _earlyCheckoutStatus = 'pending';
-                  _earlyCheckoutReason = reasonController.text;
-                  _earlyCheckoutRequestTime = DateTime.now();
-                }
-              });
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Row(
-                      children: [
-                        Icon(result['success'] ? Icons.check_circle : Icons.error, color: Colors.white),
-                        const SizedBox(width: 10),
-                        Text(result['message']),
-                      ],
-                    ),
-                    backgroundColor: result['success'] ? Colors.green : Colors.red,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                );
-              }
-            },
-            child: const Text('Gửi'),
-          ),
-        ],
-      ),
     );
   }
+
   void _showEarlyCheckoutStatusDialog() {
     showDialog(
       context: context,
@@ -1071,14 +1403,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     SnackBar(
                       content: Row(
                         children: [
-                          Icon(result['success'] ? Icons.check_circle : Icons.error, color: Colors.white),
+                          Icon(result['success'] ? Icons.check_circle : Icons
+                              .error, color: Colors.white),
                           const SizedBox(width: 10),
                           Text(result['message']),
                         ],
                       ),
-                      backgroundColor: result['success'] ? Colors.green : Colors.red,
+                      backgroundColor: result['success'] ? Colors.green : Colors
+                          .red,
                       behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   );
                 }
@@ -1097,23 +1432,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             children: [
               Text('Lý do: $_earlyCheckoutReason'),
               if (_earlyCheckoutRequestTime != null)
-                Text('Thời gian gửi: ${DateFormat('HH:mm dd/MM/yyyy').format(_earlyCheckoutRequestTime!)}'),
+                Text('Thời gian gửi: ${DateFormat('HH:mm dd/MM/yyyy').format(
+                    _earlyCheckoutRequestTime!)}'),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Text('Trạng thái: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Trạng thái: ',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   if (_earlyCheckoutStatus == 'pending')
-                    const Text('Đang chờ duyệt', style: TextStyle(color: Colors.amber)),
+                    const Text('Đang chờ duyệt',
+                        style: TextStyle(color: Colors.amber)),
                   if (_earlyCheckoutStatus == 'approved')
-                    const Text('Đã duyệt', style: TextStyle(color: Colors.green)),
+                    const Text(
+                        'Đã duyệt', style: TextStyle(color: Colors.green)),
                   if (_earlyCheckoutStatus == 'rejected')
-                    const Text('Bị từ chối', style: TextStyle(color: Colors.red)),
+                    const Text(
+                        'Bị từ chối', style: TextStyle(color: Colors.red)),
                 ],
               ),
             ],
           ),
           actions: actions,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
         );
       },
     );
@@ -1123,452 +1464,332 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final dateFormat = DateFormat('dd/MM/yyyy');
     final timeFormat = DateFormat('HH:mm');
 
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          // Header with gradient
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  pinkColor.withOpacity(0.9),
+                  pinkColor.withOpacity(0.6),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 60, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Lịch sử',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TabBar(
+                  indicatorColor: Colors.white,
+                  indicatorWeight: 3,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white.withOpacity(0.7),
+                  tabs: const [
+                    Tab(text: 'Điểm danh'),
+                    Tab(text: 'Đơn khách'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          Expanded(
+            child: TabBarView(
+              children: [
+                // Attendance History Tab
+                _buildAttendanceHistoryTab(),
+
+                // Orders History Tab
+                _buildOrdersHistoryTab(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceHistoryTab() {
+    final dateFormat = DateFormat('dd/MM/yyyy');
+    final timeFormat = DateFormat('HH:mm');
+
+    // Mock data for attendance history
+    final attendanceRecords = List.generate(
+      30,
+          (index) {
+        final date = DateTime.now().subtract(Duration(days: index));
+        final isWeekend = date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+
+        // Skip weekends or random days for variety
+        if (isWeekend || (index > 5 && index % 7 == 0)) {
+          return {
+            'date': date,
+            'checkin': null,
+            'checkout': null,
+            'status': 'absence',
+            'earlyCheckoutStatus': null,
+            'earlyCheckoutReason': null,
+          };
+        }
+
+        // Regular attendance
+        final checkinTime = DateTime(
+            date.year, date.month, date.day,
+            7 + (index % 2), 45 + (index % 15)
+        );
+
+        final checkoutTime = index % 10 == 0
+            ? DateTime(date.year, date.month, date.day, 16, 30)
+            : DateTime(date.year, date.month, date.day, 17, 30 + (index % 30));
+
+        final isEarlyCheckout = checkoutTime.hour < 17 ||
+            (checkoutTime.hour == 17 && checkoutTime.minute < 30);
+
+        return {
+          'date': date,
+          'checkin': checkinTime,
+          'checkout': checkoutTime,
+          'status': 'present',
+          'earlyCheckoutStatus': isEarlyCheckout ?
+          (index % 3 == 0 ? 'approved' : (index % 3 == 1 ? 'pending' : 'rejected')) : null,
+          'earlyCheckoutReason': isEarlyCheckout ?
+          'Lý do về sớm ${index % 3 == 0 ? "(đã duyệt)" : index % 3 == 1 ? "(đang chờ)" : "(từ chối)"}' : null,
+        };
+      },
+    );
+
     // Filter variables
-    final ValueNotifier<String> statusFilter = ValueNotifier<String>('all');
-    final ValueNotifier<DateTimeRange?> dateRangeFilter = ValueNotifier<DateTimeRange?>(null);
+    final months = <String>['Tất cả', ...List.generate(
+        6, (i) => DateFormat('MM/yyyy').format(DateTime.now().subtract(Duration(days: 30 * i)))
+    ).toSet().toList()];
+
+    final statusOptions = ['Tất cả', 'Đi làm', 'Vắng mặt', 'Đi muộn', 'Về sớm'];
+
+    final monthValue = ValueNotifier<String>(months[0]);
+    final statusValue = ValueNotifier<String>(statusOptions[0]);
 
     return Column(
       children: [
-        // Header with gradient
+        // Filter section
         Container(
-          width: double.infinity,
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [pinkColor, pinkColor.withOpacity(0.7)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(30),
-              bottomRight: Radius.circular(30),
-            ),
+            color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: pinkColor.withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
-          padding: const EdgeInsets.fromLTRB(20, 60, 20, 25),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Lịch sử điểm danh',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Xem lại lịch sử điểm danh của bạn',
+              const Text(
+                'Lọc theo:',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withOpacity(0.9),
+                  fontWeight: FontWeight.bold,
                 ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ValueListenableBuilder<String>(
+                      valueListenable: monthValue,
+                      builder: (context, value, _) {
+                        return DropdownButtonFormField<String>(
+                          value: value,
+                          decoration: InputDecoration(
+                            labelText: 'Tháng',
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          items: months.map((month) {
+                            return DropdownMenuItem(
+                              value: month,
+                              child: Text(month),
+                            );
+                          }).toList(),
+                          onChanged: (newValue) {
+                            if (newValue != null) {
+                              monthValue.value = newValue;
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ValueListenableBuilder<String>(
+                      valueListenable: statusValue,
+                      builder: (context, value, _) {
+                        return DropdownButtonFormField<String>(
+                          value: value,
+                          decoration: InputDecoration(
+                            labelText: 'Trạng thái',
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          items: statusOptions.map((status) {
+                            return DropdownMenuItem(
+                              value: status,
+                              child: Text(status),
+                            );
+                          }).toList(),
+                          onChanged: (newValue) {
+                            if (newValue != null) {
+                              statusValue.value = newValue;
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
 
-        // Filter section
-        ValueListenableBuilder<String>(
-          valueListenable: statusFilter,
-          builder: (context, statusValue, child) {
-            return ValueListenableBuilder<DateTimeRange?>(
-              valueListenable: dateRangeFilter,
-              builder: (context, dateRange, _) {
-                return Container(
-                  margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Date range picker
-                      InkWell(
-                        onTap: () async {
-                          final result = await showDateRangePicker(
-                            context: context,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                            builder: (context, child) {
-                              return Theme(
-                                data: Theme.of(context).copyWith(
-                                  colorScheme: ColorScheme.light(
-                                    primary: pinkColor,
-                                  ),
-                                ),
-                                child: child!,
-                              );
-                            },
-                          );
-                          if (result != null) {
-                            dateRangeFilter.value = result;
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            children: [
-                              Icon(Icons.calendar_today, color: pinkColor, size: 20),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  dateRange != null
-                                      ? '${dateFormat.format(dateRange.start)} - ${dateFormat.format(dateRange.end)}'
-                                      : 'Chọn khoảng thời gian',
-                                  style: TextStyle(
-                                    color: dateRange != null ? Colors.black87 : Colors.grey,
-                                    fontWeight: dateRange != null ? FontWeight.w500 : FontWeight.normal,
-                                  ),
-                                ),
-                              ),
-                              if (dateRange != null)
-                                IconButton(
-                                  icon: const Icon(Icons.close, size: 18),
-                                  onPressed: () {
-                                    dateRangeFilter.value = null;
-                                  },
-                                  color: Colors.grey,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      const Divider(height: 1),
-
-                      // Status filter chips
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        child: Row(
-                          children: [
-                            _buildFilterChip('all', 'Tất cả', statusValue, statusFilter),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('on_time', 'Đúng giờ', statusValue, statusFilter),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('late', 'Đi muộn', statusValue, statusFilter),
-                            const SizedBox(width: 8),
-                            _buildFilterChip('early_checkout', 'Về sớm', statusValue, statusFilter),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        ),
-
-        // Attendance records list
+        // Attendance list
         Expanded(
           child: ValueListenableBuilder<String>(
-            valueListenable: statusFilter,
-            builder: (context, statusValue, _) {
-              return ValueListenableBuilder<DateTimeRange?>(
-                valueListenable: dateRangeFilter,
-                builder: (context, dateRange, _) {
-                  // Apply filters
-                  final filteredActivities = _recentActivities.where((activity) {
-                    bool passStatusFilter = true;
-                    bool passDateFilter = true;
-
-                    // Apply status filter
-                    if (statusValue != 'all') {
-                      if (statusValue == 'on_time') {
-                        passStatusFilter = activity['isOnTime'] == true;
-                      } else if (statusValue == 'late') {
-                        passStatusFilter = activity['isOnTime'] == false;
-                      } else if (statusValue == 'early_checkout') {
-                        passStatusFilter = activity['earlyCheckoutStatus'] != null;
-                      }
-                    }
-
-                    // Apply date range filter
-                    if (dateRange != null) {
-                      final activityDate = activity['date'] as DateTime;
-                      final startDate = DateTime(dateRange.start.year, dateRange.start.month, dateRange.start.day);
-                      final endDate = DateTime(dateRange.end.year, dateRange.end.month, dateRange.end.day, 23, 59, 59);
-                      passDateFilter = activityDate.isAfter(startDate) && activityDate.isBefore(endDate);
-                    }
-
-                    return passStatusFilter && passDateFilter;
-                  }).toList();
-
-                  if (filteredActivities.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.search_off, size: 64, color: Colors.grey.withOpacity(0.5)),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Không tìm thấy dữ liệu',
-                            style: TextStyle(fontSize: 18, color: Colors.grey),
+            valueListenable: statusValue,
+            builder: (context, statusValue, child) {
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    for (final record in attendanceRecords)
+                      if (_filterRecord(record, monthValue.value, statusValue))
+                        Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredActivities.length,
-                    itemBuilder: (context, index) {
-                      final record = filteredActivities[index];
-                      final date = record['date'] as DateTime;
-                      final checkIn = record['checkin'] as DateTime?;
-                      final checkOut = record['checkout'] as DateTime?;
-                      final isOnTime = record['isOnTime'] as bool? ?? true;
-                      final earlyCheckoutStatus = record['earlyCheckoutStatus'] as String?;
-                      final earlyCheckoutReason = record['earlyCheckoutReason'] as String?;
-
-                      return Hero(
-                        tag: 'attendance-${date.toIso8601String()}',
-                        child: TweenAnimationBuilder<double>(
-                          duration: Duration(milliseconds: 400 + index * 100),
-                          tween: Tween<double>(begin: 0.0, end: 1.0),
-                          builder: (context, value, child) {
-                            return Transform.translate(
-                              offset: Offset(0, 50 * (1 - value)),
-                              child: Opacity(
-                                opacity: value,
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: Card(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            elevation: 2,
-                            shadowColor: Colors.black.withOpacity(0.1),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
                             child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Date header
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: pinkColor.withOpacity(0.1),
-                                    borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(16),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: pinkColor.withOpacity(0.2),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(Icons.event_note, color: pinkColor, size: 20),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: _getStatusColor(record['status']?.toString() ?? '').withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                      const SizedBox(width: 12),
-                                      Column(
+                                      child: Icon(
+                                        _getStatusIcon(record['status']?.toString() ?? ''),
+                                        color: _getStatusColor(record['status']?.toString() ?? ''),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            dateFormat.format(date),
+                                            dateFormat.format(record['date'] as DateTime),
                                             style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                          const SizedBox(height: 2),
+                                          const SizedBox(height: 4),
                                           Text(
-                                            _getWeekday(date.weekday),
+                                            _getStatusText(record['status']?.toString() ?? ''),
                                             style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey.shade600,
+                                              fontSize: 14,
+                                              color: _getStatusColor(record['status']?.toString() ?? ''),
+                                              fontWeight: FontWeight.w500,
                                             ),
                                           ),
                                         ],
                                       ),
-                                      const Spacer(),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: isOnTime ? Colors.green.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
-                                        child: Text(
-                                          isOnTime ? 'Đúng giờ' : 'Đi muộn',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: isOnTime ? Colors.green : Colors.orange,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-
-                                // Time details with timeline
-                                Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: IntrinsicHeight(
+                                if (record['checkin'] != null || record['checkout'] != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 16),
                                     child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        // Timeline column
-                                        Column(
-                                          children: [
-                                            Container(
-                                              width: 24,
-                                              height: 24,
-                                              decoration: BoxDecoration(
-                                                color: Colors.green.withOpacity(0.2),
-                                                shape: BoxShape.circle,
-                                                border: Border.all(color: Colors.green, width: 2),
-                                              ),
-                                              child: const Icon(Icons.login, color: Colors.green, size: 14),
-                                            ),
-                                            Container(
-                                              width: 2,
-                                              height: 40,
-                                              color: Colors.grey.withOpacity(0.3),
-                                            ),
-                                            Container(
-                                              width: 24,
-                                              height: 24,
-                                              decoration: BoxDecoration(
-                                                color: Colors.blue.withOpacity(0.2),
-                                                shape: BoxShape.circle,
-                                                border: Border.all(color: Colors.blue, width: 2),
-                                              ),
-                                              child: const Icon(Icons.logout, color: Colors.blue, size: 14),
-                                            ),
-                                          ],
-                                        ),
-
-                                        const SizedBox(width: 16),
-
-                                        // Time details
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      const Text(
-                                                        'Check-in',
-                                                        style: TextStyle(
-                                                          fontSize: 14,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      Row(
-                                                        children: [
-                                                          Text(
-                                                            checkIn != null ? timeFormat.format(checkIn) : '--:--',
-                                                            style: const TextStyle(
-                                                              fontSize: 18,
-                                                              fontWeight: FontWeight.bold,
-                                                              color: Colors.green,
-                                                            ),
-                                                          ),
-                                                          if (!isOnTime)
-                                                            Container(
-                                                              margin: const EdgeInsets.only(left: 6),
-                                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                              decoration: BoxDecoration(
-                                                                color: Colors.orange.withOpacity(0.1),
-                                                                borderRadius: BorderRadius.circular(4),
-                                                              ),
-                                                              child: const Text(
-                                                                'Muộn',
-                                                                style: TextStyle(fontSize: 10, color: Colors.orange),
-                                                              ),
-                                                            ),
-                                                        ],
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
+                                              const Text(
+                                                'Giờ vào',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.grey,
+                                                ),
                                               ),
-
-                                              const SizedBox(height: 30),
-
-                                              Row(
-                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                                children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      const Text(
-                                                        'Check-out',
-                                                        style: TextStyle(
-                                                          fontSize: 14,
-                                                          color: Colors.grey,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        checkOut != null ? timeFormat.format(checkOut) : '--:--',
-                                                        style: const TextStyle(
-                                                          fontSize: 18,
-                                                          fontWeight: FontWeight.bold,
-                                                          color: Colors.blue,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-
-                                                  if (earlyCheckoutStatus != null && earlyCheckoutStatus != 'none')
-                                                    Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                      decoration: BoxDecoration(
-                                                        color: _getStatusColor(earlyCheckoutStatus).withOpacity(0.1),
-                                                        borderRadius: BorderRadius.circular(12),
-                                                        border: Border.all(
-                                                          color: _getStatusColor(earlyCheckoutStatus).withOpacity(0.3),
-                                                        ),
-                                                      ),
-                                                      child: Row(
-                                                        mainAxisSize: MainAxisSize.min,
-                                                        children: [
-                                                          Icon(
-                                                            _getStatusIcon(earlyCheckoutStatus),
-                                                            color: _getStatusColor(earlyCheckoutStatus),
-                                                            size: 16,
-                                                          ),
-                                                          const SizedBox(width: 6),
-                                                          Text(
-                                                            _getStatusText(earlyCheckoutStatus),
-                                                            style: TextStyle(
-                                                              fontSize: 12,
-                                                              fontWeight: FontWeight.w500,
-                                                              color: _getStatusColor(earlyCheckoutStatus),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                ],
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                record['checkin'] != null
+                                                    ? timeFormat.format(record['checkin'] as DateTime)
+                                                    : '---',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: record['checkin'] != null
+                                                      ? Colors.black87
+                                                      : Colors.grey,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              const Text(
+                                                'Giờ ra',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                record['checkout'] != null
+                                                    ? timeFormat.format(record['checkout'] as DateTime)
+                                                    : '---',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: record['checkout'] != null
+                                                      ? Colors.black87
+                                                      : Colors.grey,
+                                                ),
                                               ),
                                             ],
                                           ),
@@ -1576,35 +1797,45 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       ],
                                     ),
                                   ),
-                                ),
-
-                                // Early checkout reason
-                                if (earlyCheckoutReason != null && earlyCheckoutReason.isNotEmpty)
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                if (record['earlyCheckoutReason'] != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 12),
                                     child: Container(
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
-                                        color: Colors.grey.withOpacity(0.05),
+                                        color: Colors.grey.shade100,
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.grey.withOpacity(0.1)),
                                       ),
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          const Text(
-                                            'Lý do xin về sớm:',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                              fontWeight: FontWeight.w500,
-                                            ),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.info_outline,
+                                                size: 16,
+                                                color: _getEarlyCheckoutStatusColor(
+                                                    record['earlyCheckoutStatus']?.toString() ?? ''),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Yêu cầu về sớm',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: _getEarlyCheckoutStatusColor(
+                                                      record['earlyCheckoutStatus']?.toString() ?? ''),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            earlyCheckoutReason,
-                                            style: const TextStyle(fontSize: 14),
+                                            record['earlyCheckoutReason']?.toString() ?? '',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.black87,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -1614,10 +1845,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             ),
                           ),
                         ),
-                      );
-                    },
-                  );
-                },
+                  ],
+                ),
               );
             },
           ),
@@ -1626,7 +1855,632 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildFilterChip(String value, String label, String selectedValue, ValueNotifier<String> notifier) {
+// Helper method to filter records by month and status
+  bool _filterRecord(Map<String, dynamic> record, String month, String status) {
+    final recordDate = record['date'] as DateTime;
+
+    // Filter by month
+    if (month != 'Tất cả') {
+      final recordMonth = DateFormat('MM/yyyy').format(recordDate);
+      if (recordMonth != month) return false;
+    }
+
+    // Filter by status
+    if (status != 'Tất cả') {
+      final recordStatus = record['status'] as String;
+      if (status == 'Đi làm' && recordStatus != 'present') return false;
+      if (status == 'Vắng mặt' && recordStatus != 'absence') return false;
+      if (status == 'Đi muộn') {
+        final checkin = record['checkin'] as DateTime?;
+        if (checkin == null || checkin.hour < 9) return false;
+      }
+      if (status == 'Về sớm' && record['earlyCheckoutStatus'] == null) return false;
+    }
+
+    return true;
+  }
+
+// Helper method to get status icon
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'present':
+        return Icons.check_circle;
+      case 'absence':
+        return Icons.cancel;
+      default:
+        return Icons.access_time;
+    }
+  }
+
+// Helper method to get status color
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'present':
+        return Colors.green;
+      case 'absence':
+        return Colors.red;
+      default:
+        return Colors.orange;
+    }
+  }
+
+// Helper method to get status text
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'present':
+        return 'Có mặt';
+      case 'absence':
+        return 'Vắng mặt';
+      default:
+        return 'Chưa xác định';
+    }
+  }
+
+// Helper method to get early checkout status color
+  Color _getEarlyCheckoutStatusColor(String status) {
+    switch (status) {
+      case 'approved':
+        return Colors.green;
+      case 'pending':
+        return Colors.orange;
+      case 'rejected':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+  Widget _buildOrdersHistoryTab() {
+    return FutureBuilder<Map<String, List<Map<String, dynamic>>>>(
+      future: OrderService.getMonthlyHistory(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(
+            child: CircularProgressIndicator(color: pinkColor),
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData) {
+          return const Center(
+            child: Text('Không thể tải lịch sử đơn hàng'),
+          );
+        }
+
+        final monthlyData = snapshot.data!;
+        final months = monthlyData.keys.toList()..sort((a, b) => b.compareTo(a));
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: months.length,
+          itemBuilder: (context, monthIndex) {
+            final month = months[monthIndex];
+            final monthData = monthlyData[month]!;
+
+            // First item is the month summary
+            final summary = monthData.first;
+            final isExpanded = ValueNotifier<bool>(monthIndex == 0);
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Month header with earnings
+                InkWell(
+                  onTap: () => isExpanded.value = !isExpanded.value,
+                  child: Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    color: pinkColor.withOpacity(0.1),
+                    elevation: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Tháng $month',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Tổng thu nhập: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(summary['totalEarnings'])}',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Lương cơ bản: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(summary['baseSalary'])}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Hoa hồng: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(summary['totalCommission'])}',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ValueListenableBuilder<bool>(
+                            valueListenable: isExpanded,
+                            builder: (context, expanded, _) {
+                              return Icon(
+                                expanded ? Icons.expand_less : Icons.expand_more,
+                                color: Colors.grey.shade700,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Order list for this month
+                ValueListenableBuilder<bool>(
+                  valueListenable: isExpanded,
+                  builder: (context, expanded, _) {
+                    if (!expanded) return const SizedBox.shrink();
+
+                    // Skip the first item (summary) and show orders
+                    final orders = monthData.skip(1).toList();
+
+                    if (orders.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Center(
+                          child: Text(
+                            'Không có đơn hàng trong tháng này',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    // Group orders by date
+                    final ordersByDate = <String, List<Map<String, dynamic>>>{};
+                    for (var order in orders) {
+                      final dateStr = order['dateDisplay'] as String;
+                      ordersByDate[dateStr] ??= [];
+                      ordersByDate[dateStr]!.add(order);
+                    }
+
+                    final dates = ordersByDate.keys.toList()
+                      ..sort((a, b) => b.compareTo(a));
+
+                    return ListView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      shrinkWrap: true,
+                      itemCount: dates.length,
+                      itemBuilder: (context, dateIndex) {
+                        final date = dates[dateIndex];
+                        final dateOrders = ordersByDate[date]!;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+                              child: Text(
+                                date,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            ...dateOrders.map((order) => _buildOrderItem(order)),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 16),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTodaySchedule(Map<int, Map<String, bool>> schedule) {
+    final now = DateTime.now();
+    final day = now.weekday;
+    final dayName = _getWeekday(day);
+    final hasMorningShift = schedule[day]!['morning'] as bool;
+    final hasAfternoonShift = schedule[day]!['afternoon'] as bool;
+
+    final currentHour = now.hour;
+    final isMorningShiftActive = hasMorningShift && currentHour >= 8 && currentHour < 12;
+    final isAfternoonShiftActive = hasAfternoonShift && currentHour >= 13 && currentHour < 18;
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: pinkColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.today,
+                    color: pinkColor,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Hôm nay',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '$dayName, ${DateFormat('dd/MM/yyyy').format(now)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildShiftCard(
+                    title: 'Ca sáng',
+                    time: '08:00 - 12:00',
+                    isScheduled: hasMorningShift,
+                    isActive: isMorningShiftActive,
+                    color: pinkColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildShiftCard(
+                    title: 'Ca chiều',
+                    time: '13:30 - 17:30',
+                    isScheduled: hasAfternoonShift,
+                    isActive: isAfternoonShiftActive,
+                    color: const Color(0xFF5C6BC0),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShiftCard({
+    required String title,
+    required String time,
+    required bool isScheduled,
+    required bool isActive,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isScheduled ? color.withOpacity(0.1) : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+        border: isActive
+            ? Border.all(color: color, width: 2)
+            : Border.all(color: Colors.transparent),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isScheduled ? Icons.check_circle : Icons.cancel,
+                color: isScheduled ? color : Colors.grey,
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: isScheduled ? color : Colors.grey,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isScheduled ? time : 'Nghỉ',
+            style: TextStyle(
+              fontSize: 14,
+              color: isScheduled ? Colors.black87 : Colors.grey,
+            ),
+          ),
+          if (isActive) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Đang diễn ra',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDayScheduleRow({
+    required int day,
+    required String dayName,
+    required bool morning,
+    required bool afternoon,
+  }) {
+    final isToday = DateTime.now().weekday == day;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      decoration: BoxDecoration(
+        color: isToday ? pinkColor.withOpacity(0.1) : Colors.transparent,
+        border: Border.all(
+          color: isToday ? pinkColor.withOpacity(0.3) : Colors.grey.shade200,
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          // Day name
+          SizedBox(
+            width: 80,
+            child: Text(
+              dayName,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: isToday ? FontWeight.bold : FontWeight.w500,
+                color: isToday ? pinkColor : Colors.black87,
+              ),
+            ),
+          ),
+
+          // Morning shift
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: morning ? pinkColor.withOpacity(0.1) : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    morning ? Icons.check : Icons.close,
+                    color: morning ? pinkColor : Colors.grey,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Sáng',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: morning ? pinkColor : Colors.grey,
+                      fontWeight: morning ? FontWeight.w500 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Afternoon shift
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: afternoon ? const Color(0xFF5C6BC0).withOpacity(0.1) : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    afternoon ? Icons.check : Icons.close,
+                    color: afternoon ? const Color(0xFF5C6BC0) : Colors.grey,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Chiều',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: afternoon ? const Color(0xFF5C6BC0) : Colors.grey,
+                      fontWeight: afternoon ? FontWeight.w500 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegendItem({
+    required Color color,
+    required String text,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  Widget _buildOrderItem(Map<String, dynamic> order) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    order['service'],
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: order['status'] == 'Hoàn thành'
+                        ? Colors.green.withOpacity(0.1)
+                        : order['status'] == 'Đang thực hiện'
+                        ? Colors.blue.withOpacity(0.1)
+                        : Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    order['status'],
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: order['status'] == 'Hoàn thành'
+                          ? Colors.green
+                          : order['status'] == 'Đang thực hiện'
+                          ? Colors.blue
+                          : Colors.red,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                const SizedBox(width: 4),
+                Text(
+                  order['timeDisplay'],
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Rating stars
+                Row(
+                  children: [
+                    ...List.generate(5, (index) {
+                      return Icon(
+                        index < (order['rating'] as int)
+                            ? Icons.star
+                            : Icons.star_border,
+                        color: Colors.amber,
+                        size: 18,
+                      );
+                    }),
+                  ],
+                ),
+
+                // Commission
+                Text(
+                  NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0)
+                      .format(order['commission']),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildFilterChip(String value, String label, String selectedValue,
+      ValueNotifier<String> notifier) {
     final isSelected = selectedValue == value;
 
     return InkWell(
@@ -1761,7 +2615,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.event_note, size: 64, color: Colors.grey.shade300),
+                    Icon(Icons.event_note, size: 64,
+                        color: Colors.grey.shade300),
                     const SizedBox(height: 16),
                     Text(
                       'Chưa có yêu cầu nghỉ phép nào',
@@ -1898,7 +2753,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: pinkColor.withOpacity(0.1),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1908,7 +2764,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   child: Row(
                     children: [
                       Icon(
-                        type == 'sick' ? Icons.medical_services : Icons.beach_access,
+                        type == 'sick' ? Icons.medical_services : Icons
+                            .beach_access,
                         size: 20,
                         color: pinkColor,
                       ),
@@ -1925,7 +2782,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -2003,7 +2861,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: pinkColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
@@ -2025,7 +2884,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         label: const Text('Hủy yêu cầu'),
                         style: TextButton.styleFrom(
                           foregroundColor: Colors.red,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
                           visualDensity: VisualDensity.compact,
                         ),
                       ),
@@ -2097,10 +2957,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           builder: (stateContext, setState) {
             return Padding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(modalContext).viewInsets.bottom,
+                bottom: MediaQuery
+                    .of(modalContext)
+                    .viewInsets
+                    .bottom,
               ),
               child: Container(
-                height: MediaQuery.of(context).size.height * 0.85,
+                height: MediaQuery
+                    .of(context)
+                    .size
+                    .height * 0.85,
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.only(
@@ -2163,9 +3029,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               children: [
                                 Expanded(
                                   child: InkWell(
-                                    onTap: () => setState(() => leaveType = 'regular'),
+                                    onTap: () =>
+                                        setState(() => leaveType = 'regular'),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
                                       decoration: BoxDecoration(
                                         color: leaveType == 'regular'
                                             ? pinkColor
@@ -2189,9 +3057,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: InkWell(
-                                    onTap: () => setState(() => leaveType = 'sick'),
+                                    onTap: () =>
+                                        setState(() => leaveType = 'sick'),
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
                                       decoration: BoxDecoration(
                                         color: leaveType == 'sick'
                                             ? pinkColor
@@ -2236,7 +3106,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         context: context,
                                         initialDate: DateTime.now(),
                                         firstDate: DateTime.now(),
-                                        lastDate: DateTime.now().add(const Duration(days: 90)),
+                                        lastDate: DateTime.now().add(
+                                            const Duration(days: 90)),
                                         builder: (context, child) {
                                           return Theme(
                                             data: Theme.of(context).copyWith(
@@ -2252,7 +3123,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         setState(() {
                                           startDate = date;
                                           // Reset end date if it's before start date
-                                          if (endDate != null && endDate!.isBefore(date)) {
+                                          if (endDate != null &&
+                                              endDate!.isBefore(date)) {
                                             endDate = date;
                                           }
                                         });
@@ -2262,7 +3134,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 12, vertical: 14),
                                       decoration: BoxDecoration(
-                                        border: Border.all(color: Colors.grey.shade300),
+                                        border: Border.all(
+                                            color: Colors.grey.shade300),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
@@ -2291,9 +3164,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                   child: InkWell(
                                     onTap: () async {
                                       if (startDate == null) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger
+                                            .of(context)
+                                            .showSnackBar(
                                           const SnackBar(
-                                            content: Text('Vui lòng chọn ngày bắt đầu trước'),
+                                            content: Text(
+                                                'Vui lòng chọn ngày bắt đầu trước'),
                                             behavior: SnackBarBehavior.floating,
                                           ),
                                         );
@@ -2304,7 +3180,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                         context: context,
                                         initialDate: endDate ?? startDate!,
                                         firstDate: startDate!,
-                                        lastDate: startDate!.add(const Duration(days: 90)),
+                                        lastDate: startDate!.add(
+                                            const Duration(days: 90)),
                                         builder: (context, child) {
                                           return Theme(
                                             data: Theme.of(context).copyWith(
@@ -2326,7 +3203,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 12, vertical: 14),
                                       decoration: BoxDecoration(
-                                        border: Border.all(color: Colors.grey.shade300),
+                                        border: Border.all(
+                                            color: Colors.grey.shade300),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
@@ -2373,7 +3251,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide(color: pinkColor, width: 2),
+                                  borderSide: BorderSide(
+                                      color: pinkColor, width: 2),
                                 ),
                               ),
                               onChanged: (value) {
@@ -2386,14 +3265,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
-                                onPressed: isSubmitting || startDate == null || endDate == null
+                                onPressed: isSubmitting || startDate == null ||
+                                    endDate == null
                                     ? null
                                     : () async {
                                   setState(() {
                                     isSubmitting = true;
                                   });
 
-                                  final result = await LeaveService.submitLeaveRequest(
+                                  final result = await LeaveService
+                                      .submitLeaveRequest(
                                     startDate: startDate!,
                                     endDate: endDate!,
                                     reason: reason,
@@ -2408,7 +3289,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(result['message']),
-                                        backgroundColor: result['success'] ? Colors.green : Colors.red,
+                                        backgroundColor: result['success']
+                                            ? Colors.green
+                                            : Colors.red,
                                         behavior: SnackBarBehavior.floating,
                                       ),
                                     );
@@ -2422,7 +3305,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: pinkColor,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 16),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
@@ -2439,7 +3323,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                 )
                                     : const Text(
                                   'Gửi yêu cầu',
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                  style: TextStyle(fontSize: 16,
+                                      fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ),
@@ -2460,79 +3345,193 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _confirmCancelRequest(String requestId) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Xác nhận hủy'),
-        content: const Text('Bạn có chắc muốn hủy yêu cầu nghỉ phép này?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Không'),
+      builder: (context) =>
+          AlertDialog(
+            title: const Text('Xác nhận hủy'),
+            content: const Text('Bạn có chắc muốn hủy yêu cầu nghỉ phép này?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Không'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+
+                  final result = await LeaveService.cancelLeaveRequest(
+                      requestId);
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(result['message']),
+                        backgroundColor: result['success']
+                            ? Colors.green
+                            : Colors.red,
+                      ),
+                    );
+                  }
+
+                  // Force refresh the page
+                  setState(() {});
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                ),
+                child: const Text('Hủy yêu cầu'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-
-              final result = await LeaveService.cancelLeaveRequest(requestId);
-
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(result['message']),
-                    backgroundColor: result['success'] ? Colors.green : Colors.red,
-                  ),
-                );
-              }
-
-              // Force refresh the page
-              setState(() {});
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text('Hủy yêu cầu'),
-          ),
-        ],
-      ),
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'approved':
-        return Colors.green;
-      case 'pending':
-        return Colors.amber;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
+  Widget _buildSalarySection() {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: SalaryService.getEstimatedSalary(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                height: 4,
+                child: LinearProgressIndicator(),
+              ),
+            ),
+          );
+        }
 
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'approved':
-        return Icons.check_circle;
-      case 'pending':
-        return Icons.hourglass_top;
-      case 'rejected':
-        return Icons.cancel;
-      default:
-        return Icons.info;
-    }
-  }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+            child: const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('Không thể tải thông tin lương'),
+            ),
+          );
+        }
 
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'approved':
-        return 'Được duyệt về sớm';
-      case 'pending':
-        return 'Đang chờ phê duyệt';
-      case 'rejected':
-        return 'Bị từ chối về sớm';
-      default:
-        return 'Không xác định';
-    }
+        final salaryData = snapshot.data!;
+
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                const Color(0xFF1E3C72),
+                const Color(0xFF2A5298),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Lương tạm tính (${salaryData['month']})',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${salaryData['workedDays']}/${salaryData['totalWorkdays']} ngày',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  salaryData['formattedTotal'],
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Tổng giờ làm',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withOpacity(0.8),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${salaryData['totalHours']} giờ',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Giờ làm thêm',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withOpacity(0.8),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${salaryData['overtimeHours']} giờ',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   String _getWeekday(int weekday) {
