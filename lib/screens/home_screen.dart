@@ -84,9 +84,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             selectedColor: pinkColor,
           ),
           SalomonBottomBarItem(
-            icon: const Icon(Icons.person_outline),
-            activeIcon: const Icon(Icons.person),
-            title: const Text('Tài khoản'),
+            icon: _currentIndex == 4 ?
+            Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: pinkColor,
+                shape: BoxShape.circle,
+              ),
+              child: CircleAvatar(
+                backgroundImage: NetworkImage(widget.user['avatar']),
+                radius: 10,
+              ),
+            ) :
+            CircleAvatar(
+              backgroundImage: NetworkImage(widget.user['avatar']),
+              radius: 12,
+            ),
+            title: const Text("Tài khoản"),
             selectedColor: pinkColor,
           ),
         ],
