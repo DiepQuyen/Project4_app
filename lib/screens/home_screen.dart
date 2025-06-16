@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:salomon_bottom_bar/salomon_bottom_bar.dart';
 
@@ -78,13 +81,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             selectedColor: pinkColor,
           ),
           SalomonBottomBarItem(
-            icon: const Icon(Icons.beach_access_outlined),
-            activeIcon: const Icon(Icons.beach_access),
-            title: const Text('Nghỉ phép'),
-            selectedColor: pinkColor,
-          ),
-          SalomonBottomBarItem(
-            icon: _currentIndex == 4 ?
+            icon: _currentIndex == 3 ?
             Container(
               padding: const EdgeInsets.all(2),
               decoration: BoxDecoration(
@@ -119,10 +116,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         children: [
           _buildHeaderSection(now, dateFormat, timeFormat, mainColor),
 
-          // Attendance Status Card
+          // Today's Work Status Card ---> done
           _buildAttendanceStatusCard(timeFormat),
 
-          // Estimated Salary Card
+          // Today's Services Card --> done
+          _buildTodayServicesCard(),
+
+          // Estimated Salary Card -> done
           _buildSalarySection(),
 
           // Summary Cards
@@ -141,38 +141,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildAttendanceStatusCard(DateFormat timeFormat) {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: ScheduleService.getTodayStatus(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Card(
-            margin: EdgeInsets.all(16),
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          );
-        }
-
-        final data = snapshot.data ?? {'hasShift': false, 'message': 'Đang tải...', 'status': 'Unknown'};
-        final hasShift = data['hasShift'] as bool;
-
-        if (!hasShift) {
-          return Card(
-            margin: const EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
+  Widget _buildCombinedTodayCard(DateFormat timeFormat) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Services section header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.event_busy, color: Colors.grey[600], size: 26),
-                      const SizedBox(width: 12),
+                      Icon(Icons.spa, color: pinkColor, size: 22),
+                      const SizedBox(width: 8),
                       Text(
-                        'Trạng thái hôm nay',
+                        'Dịch vụ hôm nay',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -181,121 +170,500 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  Text(
-                    data['message'] ?? 'Không có ca làm việc hôm nay',
-                    style: const TextStyle(fontSize: 16),
+                  TextButton(
+                    onPressed: () {
+                      // Handle view all action
+                    },
+                    child: Text(
+                      'Xem tất cả',
+                      style: TextStyle(color: pinkColor, fontSize: 13),
+                    ),
                   ),
                 ],
               ),
-            ),
-          );
-        }
+              const SizedBox(height: 8),
 
-        final schedules = (data['schedules'] as List<dynamic>);
-
-        return Card(
-          margin: const EdgeInsets.all(16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 2,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.event_available, color: mainColor, size: 26),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Trạng thái hôm nay',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
+              // Services list
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: OrderService.getTodayOrders(AuthService.getCurrentUser()?['id']),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: CircularProgressIndicator(),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                ...schedules.map((schedule) {
-                  final shift = schedule['shift'] as String;
-                  final status = schedule['status'] as String;
-                  final checkIn = schedule['checkInTime'] as String;
-                  final checkOut = schedule['checkOutTime'] as String;
-
-                  Color statusColor;
-                  IconData statusIcon;
-
-                  switch (status) {
-                    case 'On Time':
-                      statusColor = Colors.green;
-                      statusIcon = Icons.check_circle;
-                      break;
-                    case 'Late':
-                      statusColor = Colors.orange;
-                      statusIcon = Icons.warning;
-                      break;
-                    case 'Absent':
-                      statusColor = Colors.red;
-                      statusIcon = Icons.cancel;
-                      break;
-                    case 'Working':
-                      statusColor = Colors.blue;
-                      statusIcon = Icons.work;
-                      break;
-                    default:
-                      statusColor = Colors.grey;
-                      statusIcon = Icons.schedule;
+                    );
                   }
 
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(statusIcon, color: statusColor),
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.event_busy, size: 48, color: Colors.grey[300]),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Không có dịch vụ nào hôm nay',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Ca $shift: $checkIn - $checkOut',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: snapshot.data!.map((service) => _buildServiceCard(service)).toList(),
+                  );
+                },
+              ),
+
+              // Divider between sections
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Divider(color: Colors.grey[200], thickness: 1),
+              ),
+
+              // Status section
+              Row(
+                children: [
+                  Icon(Icons.event_available, color: pinkColor, size: 22),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Trạng thái làm việc',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Status information
+              FutureBuilder<Map<String, dynamic>>(
+                future: ScheduleService.getTodayStatus(AuthService.getCurrentUser()?['id']),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 10),
+                        child: SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final data = snapshot.data ?? {'hasShift': false, 'message': 'Đang tải...', 'status': 'Unknown'};
+                  final hasShift = data['hasShift'] as bool;
+
+                  if (!hasShift) {
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.event_busy, color: Colors.grey[600]),
+                          const SizedBox(width: 12),
+                          Expanded(child: Text(data['message'] ?? 'Không có ca làm việc hôm nay')),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final schedules = (data['schedules'] as List<dynamic>);
+                  return Column(
+                    children: schedules.map((schedule) {
+                      final shift = schedule['shift'] as String;
+                      final status = schedule['status'] as String;
+                      final checkIn = schedule['checkInTime'] as String;
+                      final checkOut = schedule['checkOutTime'] as String;
+
+                      // Status colors and icons
+                      Color statusColor;
+                      IconData statusIcon;
+                      switch (status) {
+                        case 'On Time':
+                          statusColor = Colors.green;
+                          statusIcon = Icons.check_circle;
+                          break;
+                        case 'Late':
+                          statusColor = Colors.orange;
+                          statusIcon = Icons.warning;
+                          break;
+                        case 'Absent':
+                          statusColor = Colors.red;
+                          statusIcon = Icons.cancel;
+                          break;
+                        case 'Working':
+                          statusColor = Colors.blue;
+                          statusIcon = Icons.work;
+                          break;
+                        default:
+                          statusColor = Colors.grey;
+                          statusIcon = Icons.schedule;
+                      }
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(statusIcon, color: statusColor),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Ca $shift - $status',
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  if (checkIn.isNotEmpty || checkOut.isNotEmpty)
+                                    const SizedBox(height: 4),
+                                  if (checkIn.isNotEmpty)
+                                    Text('Check in: $checkIn', style: const TextStyle(fontSize: 13)),
+                                  if (checkOut.isNotEmpty)
+                                    Text('Check out: $checkOut', style: const TextStyle(fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: () => _showShiftServicesDialog(shift),
+                              icon: const Icon(Icons.list_alt, size: 14),
+                              label: const Text('Dịch vụ', style: TextStyle(fontSize: 12)),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                backgroundColor: pinkColor.withOpacity(0.1),
+                                foregroundColor: pinkColor,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                status,
-                                style: TextStyle(
-                                  color: statusColor,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttendanceStatusCard(DateFormat timeFormat) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.work_outline, color: pinkColor),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Trạng thái làm việc',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Status information
+              FutureBuilder<Map<String, dynamic>>(
+                future: ScheduleService.getTodayStatus(AuthService.getCurrentUser()?['id']),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+
+                  final data = snapshot.data ?? {'hasShift': false, 'message': 'Đang tải...', 'status': 'Unknown'};
+                  final hasShift = data['hasShift'] as bool;
+
+                  if (!hasShift) {
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.event_busy, color: Colors.grey[500]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              data['message'] as String,
+                              style: TextStyle(color: Colors.grey[700]),
+                            ),
                           ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final schedules = (data['schedules'] as List<dynamic>);
+                  return Column(
+                    children: schedules.map((schedule) {
+                      final shift = schedule['shift'] as String;
+                      final status = schedule['status'] as String;
+                      final checkIn = schedule['checkInTime'] as String;
+                      final checkOut = schedule['checkOutTime'] as String;
+
+                      // Status colors and icons
+                      Color statusColor;
+                      IconData statusIcon;
+
+                      switch (status) {
+                        case 'On Time':
+                          statusColor = Colors.green;
+                          statusIcon = Icons.check_circle;
+                          break;
+                        case 'Late':
+                          statusColor = Colors.orange;
+                          statusIcon = Icons.warning;
+                          break;
+                        case 'Absent':
+                          statusColor = Colors.red;
+                          statusIcon = Icons.cancel;
+                          break;
+                        case 'Working':
+                          statusColor = Colors.blue;
+                          statusIcon = Icons.work;
+                          break;
+                        default:
+                          statusColor = Colors.grey;
+                          statusIcon = Icons.schedule;
+                      }
+
+                      // Get shift time
+                      final shiftTime = shift == 'Sáng' ? '08:00 - 12:00' : '13:00 - 17:30';
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: statusColor.withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(statusIcon, color: statusColor),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Ca $shift',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: statusColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    status,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: statusColor,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Thời gian: $shiftTime',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                            if (checkIn.isNotEmpty || checkOut.isNotEmpty)
+                              const SizedBox(height: 8),
+                            if (checkIn.isNotEmpty)
+                              Row(
+                                children: [
+                                  Icon(Icons.login, size: 14, color: Colors.grey[600]),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Check in: $checkIn',
+                                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                                  ),
+                                ],
+                              ),
+                            if (checkOut.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.logout, size: 14, color: Colors.grey[600]),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Check out: $checkOut',
+                                      style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  void _showShiftServicesDialog(String shift) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.spa, color: pinkColor),
+              const SizedBox(width: 8),
+              Text('Dịch vụ ca $shift'),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: OrderService.getShiftServices(shift),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.event_busy, size: 48, color: Colors.grey[300]),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Không có dịch vụ nào trong ca này',
+                          style: TextStyle(color: Colors.grey[600]),
                         ),
                       ],
                     ),
                   );
-                }).toList(),
-              ],
+                }
+
+                return ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: snapshot.data!.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final service = snapshot.data![index];
+                    return Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.grey.shade50,
+                      ),
+                      child: ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: pinkColor.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.spa, color: pinkColor, size: 20),
+                        ),
+                        title: Text(
+                          service['name'],
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        subtitle: Row(
+                          children: [
+                            Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${service['duration']} phút',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ],
+                        ),
+                        trailing: Text(
+                          NumberFormat.currency(
+                            locale: 'vi_VN',
+                            symbol: '₫',
+                            decimalDigits: 0,
+                          ).format(service['price']),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: pinkColor,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Đóng'),
+              style: TextButton.styleFrom(
+                foregroundColor: pinkColor,
+              ),
+            ),
+          ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
         );
       },
     );
   }
-
   Widget _buildWorkScheduleTab() {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: ScheduleService.getUserSchedule(),
@@ -514,7 +882,493 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       },
     );
   }
+  Widget _buildTodayServices() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Dịch vụ hôm nay',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _currentIndex = 2; // Switch to Orders tab
+                      });
+                    },
+                    child: Text(
+                      'Xem tất cả',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: mainColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: OrderService.getTodayOrders(AuthService.getCurrentUser()?['id']),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
 
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20.0),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.event_busy, size: 40, color: Colors.grey[400]),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Không có dịch vụ nào hôm nay',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final services = snapshot.data!;
+
+                  // Group services by shift
+                  final morningServices = services.where((s) =>
+                  (s['startTime'] as DateTime).hour < 12).toList();
+                  final afternoonServices = services.where((s) =>
+                  (s['startTime'] as DateTime).hour >= 12).toList();
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (morningServices.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('Ca Sáng',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ...morningServices.map((service) => _buildServiceCard(service)),
+                        const SizedBox(height: 12),
+                      ],
+
+                      if (afternoonServices.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('Ca Chiều',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ...afternoonServices.map((service) => _buildServiceCard(service)),
+                      ],
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  Widget _buildTodayServicesCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.spa, color: pinkColor),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Dịch vụ hôm nay',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: pinkColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Hôm nay',
+                      style: TextStyle(
+                        color: pinkColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Services by shift
+              FutureBuilder<Map<String, List<Map<String, dynamic>>>>(
+                future: _getTodayServicesByShift(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          children: [
+                            Icon(Icons.event_busy, size: 40, color: Colors.grey[300]),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Không có dịch vụ nào hôm nay',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
+                  final servicesByShift = snapshot.data!;
+                  final shifts = servicesByShift.keys.toList();
+
+                  return Column(
+                    children: shifts.map((shift) {
+                      final services = servicesByShift[shift]!;
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        color: Colors.grey[50],
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: Colors.grey.shade200),
+                        ),
+                        child: Theme(
+                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                          child: ExpansionTile(
+                            initiallyExpanded: false,
+                            tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            title: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: shift == 'Sáng'
+                                        ? Colors.amber.withOpacity(0.2)
+                                        : Colors.indigo.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    shift == 'Sáng' ? Icons.wb_sunny : Icons.nightlight_round,
+                                    size: 16,
+                                    color: shift == 'Sáng' ? Colors.amber[700] : Colors.indigo,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Ca $shift',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: pinkColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '${services.length} dịch vụ',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: pinkColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            children: services.map((service) => _buildServiceCard(service)).toList(),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+// Helper method to group services by shift
+  Future<Map<String, List<Map<String, dynamic>>>> _getTodayServicesByShift() async {
+    try {
+      // Gọi API lấy dữ liệu
+      final response = await http.get(
+        Uri.parse('${OrderService.baseUrl}/api/v1/admin/appointment/today'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        // Parse dữ liệu JSON
+        final data = json.decode(response.body);
+        print("Response body: $data");
+
+        // Khởi tạo kết quả
+        final Map<String, List<Map<String, dynamic>>> result = {};
+
+        // Xử lý dữ liệu đã được nhóm theo ca
+        data.forEach((shift, services) {
+          if (services is List) {
+            // Chuyển đổi List động thành List<Map<String, dynamic>>
+            result[shift] = List<Map<String, dynamic>>.from(
+                services.map((item) {
+                  // Chuyển đổi chuỗi datetime thành đối tượng DateTime
+                  final service = Map<String, dynamic>.from(item);
+                  if (service['startTime'] is String) {
+                    service['startTime'] = DateTime.parse(service['startTime']);
+                  }
+                  if (service['endTime'] is String) {
+                    service['endTime'] = DateTime.parse(service['endTime']);
+                  }
+                  return service;
+                })
+            );
+          }
+        });
+
+        return result;
+      } else {
+        print('Error status code: ${response.statusCode}');
+        return {};
+      }
+    } catch (e) {
+      print('Error in _getTodayServicesByShift: $e');
+      return {};
+    }
+  }
+  Widget _buildServiceCard(Map<String, dynamic> service) {
+    // Status color based on service status
+    Color statusColor;
+    IconData statusIcon;
+
+    switch (service['status']) {
+      case 'Hoàn thành':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        break;
+      case 'Đang thực hiện':
+        statusColor = Colors.blue;
+        statusIcon = Icons.pending_actions;
+        break;
+      case 'Đã hủy':
+        statusColor = Colors.red;
+        statusIcon = Icons.cancel;
+        break;
+      default:
+        statusColor = Colors.orange;
+        statusIcon = Icons.schedule;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          // Show details dialog
+          _showServiceDetailsDialog(service);
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: pinkColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.spa, color: pinkColor, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            service['service'],
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Icon(statusIcon, color: statusColor, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          service['status'],
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(Icons.person_outline, size: 14, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          service['customerName'],
+                          style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          service['timeDisplay'],
+                          style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showServiceDetailsDialog(Map<String, dynamic> service) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.spa, color: pinkColor),
+              const SizedBox(width: 8),
+              const Text('Chi tiết dịch vụ'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailRow('Dịch vụ:', service['service']),
+              _buildDetailRow('Khách hàng:', service['customerName']),
+              _buildDetailRow('Thời gian:', service['timeDisplay']),
+              _buildDetailRow('Trạng thái:', service['status']),
+              _buildDetailRow('Hoa hồng:', NumberFormat.currency(
+                  locale: 'vi_VN',
+                  symbol: '₫',
+                  decimalDigits: 0
+              ).format(service['commission'])),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Đóng'),
+              style: TextButton.styleFrom(foregroundColor: pinkColor),
+            ),
+          ],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        );
+      },
+    );
+  }
   Widget _buildAttendanceButton() {
     final now = DateTime.now();
     final bool isCheckedIn = _checkedIn;
@@ -1014,30 +1868,44 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Widget _buildSummaryCards() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildSummaryCard(
-              icon: Icons.calendar_month,
-              title: 'Tháng này',
-              value: '22/23',
-              subtitle: 'ngày làm việc',
-            ),
+    return FutureBuilder<Map<String, dynamic>>(
+      future: SalaryService.getEstimatedSalary(AuthService.getCurrentUser()?['id']),
+      builder: (context, snapshot) {
+        // Default values in case data is loading or not available
+        String attendanceValue = '0/0';
+
+        if (snapshot.hasData) {
+          final workedDays = snapshot.data!['workedDays'] ?? 0;
+          final totalWorkdays = snapshot.data!['totalWorkdays'] ?? 0;
+          attendanceValue = '$workedDays/$totalWorkdays';
+        }
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildSummaryCard(
+                  icon: Icons.calendar_month,
+                  title: 'Tháng này',
+                  value: attendanceValue,
+                  subtitle: 'ngày làm việc',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildSummaryCard(
+                  icon: Icons.watch_later_outlined,
+                  title: 'Đúng giờ',
+                  value: '95%',
+                  subtitle: 'tỉ lệ',
+                  valueColor: Colors.green,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildSummaryCard(
-              icon: Icons.watch_later_outlined,
-              title: 'Đúng giờ',
-              value: '95%',
-              subtitle: 'tỉ lệ',
-              valueColor: Colors.green,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1944,169 +2812,319 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
   Widget _buildOrdersHistoryTab() {
-    return FutureBuilder<Map<String, List<Map<String, dynamic>>>>(
+    return FutureBuilder<Map<String, List<dynamic>>>(
       future: OrderService.getMonthlyHistory(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(
-            child: CircularProgressIndicator(color: pinkColor),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
-        if (snapshot.hasError || !snapshot.hasData) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const Center(
-            child: Text('Không thể tải lịch sử đơn hàng'),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.history_toggle_off, size: 64, color: Colors.grey),
+                SizedBox(height: 16),
+                Text('Không có lịch sử đơn hàng',
+                    style: TextStyle(fontSize: 16, color: Colors.grey)),
+              ],
+            ),
           );
         }
 
-        final monthlyData = snapshot.data!;
-        final months = monthlyData.keys.toList()..sort((a, b) => b.compareTo(a));
+        final orderHistory = snapshot.data!;
+        final months = orderHistory.keys.toList()
+          ..sort((a, b) => DateFormat('MM/yyyy').parse(b).compareTo(
+              DateFormat('MM/yyyy').parse(a)));
 
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: months.length,
           itemBuilder: (context, monthIndex) {
             final month = months[monthIndex];
-            final monthData = monthlyData[month]!;
+            final monthData = orderHistory[month]!;
+            final monthSummary = monthData.isNotEmpty ? monthData[0] : null;
 
-            // First item is the month summary
-            final summary = monthData.first;
-            final isExpanded = ValueNotifier<bool>(monthIndex == 0);
+            // Group orders by date and shift
+            Map<String, Map<String, List<dynamic>>> ordersByDateAndShift = {};
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Month header with earnings
-                InkWell(
-                  onTap: () => isExpanded.value = !isExpanded.value,
-                  child: Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+            for (var i = 1; i < monthData.length; i++) {
+              final order = monthData[i];
+              final dateStr = order['dateDisplay'] ?? '';
+
+              if (dateStr.isEmpty) continue;
+
+              // Determine shift (Morning: before 12, Afternoon: after 12)
+              final orderTime = order['startTime'] as DateTime?;
+              final shift = orderTime == null ? 'Khác' :
+              (orderTime.hour < 12 ? 'Sáng' : 'Chiều');
+
+              ordersByDateAndShift[dateStr] ??= {};
+              ordersByDateAndShift[dateStr]![shift] ??= [];
+              ordersByDateAndShift[dateStr]![shift]!.add(order);
+            }
+
+            // Sort dates in descending order
+            final sortedDates = ordersByDateAndShift.keys.toList()
+              ..sort((a, b) => DateFormat('dd/MM/yyyy').parse(b).compareTo(
+                  DateFormat('dd/MM/yyyy').parse(a)));
+
+            // Expandable month section
+            return ExpansionTile(
+              initiallyExpanded: monthIndex == 0,
+              backgroundColor: Colors.grey[50],
+              collapsedBackgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.grey.shade200),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: mainColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    color: pinkColor.withOpacity(0.1),
-                    elevation: 0,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
+                    child: Text(
+                      month,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: mainColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  if (monthSummary != null) ...[
+                    Icon(Icons.paid, size: 18, color: Colors.green[700]),
+                    const SizedBox(width: 4),
+                    Text(
+                      NumberFormat.currency(
+                        locale: 'vi_VN',
+                        symbol: '₫',
+                        decimalDigits: 0,
+                      ).format(monthSummary['totalCommission'] ?? 0),
+                      style: TextStyle(
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              subtitle: Text(
+                '${monthSummary?['totalOrders'] ?? 0} đơn hàng',
+                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              ),
+              children: [
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: sortedDates.length,
+                  itemBuilder: (context, dateIndex) {
+                    final date = sortedDates[dateIndex];
+                    final shiftsMap = ordersByDateAndShift[date]!;
+
+                    // Parse date for better display
+                    final DateTime parsedDate = DateFormat('dd/MM/yyyy').parse(date);
+                    final String dayOfWeek = DateFormat('EEEE').format(parsedDate);
+
+                    return Padding(
+                      padding: const EdgeInsets.only(
+                          left: 8, right: 8, bottom: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                          // Date header
+                          Container(
+                            margin: const EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
                               children: [
-                                Text(
-                                  'Tháng $month',
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    date.split('/').take(2).join('/'),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(width: 8),
                                 Text(
-                                  'Tổng thu nhập: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(summary['totalEarnings'])}',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Lương cơ bản: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(summary['baseSalary'])}',
+                                  dayOfWeek,
                                   style: TextStyle(
+                                    color: Colors.grey[700],
                                     fontSize: 14,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Hoa hồng: ${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(summary['totalCommission'])}',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey.shade700,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          ValueListenableBuilder<bool>(
-                            valueListenable: isExpanded,
-                            builder: (context, expanded, _) {
-                              return Icon(
-                                expanded ? Icons.expand_less : Icons.expand_more,
-                                color: Colors.grey.shade700,
-                              );
-                            },
-                          ),
+
+                          // Shifts sections
+                          ...shiftsMap.entries.map((entry) {
+                            final shift = entry.key;
+                            final orders = entry.value;
+
+                            return ExpansionTile(
+                              initiallyExpanded: true,
+                              title: Row(
+                                children: [
+                                  Icon(
+                                    shift == 'Sáng'
+                                        ? Icons.wb_sunny
+                                        : Icons.wb_twilight,
+                                    size: 18,
+                                    color: shift == 'Sáng'
+                                        ? Colors.orange
+                                        : Colors.indigo,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    shift,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '(${orders.length} đơn)',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              children: orders.map<Widget>((order) {
+                                final service = order['service'] ?? 'Dịch vụ';
+                                final timeDisplay = order['timeDisplay'] ?? '';
+                                final commission = order['commission'] ?? 0;
+                                final status = order['status'] ?? '';
+                                final rating = order['rating'] ?? 0;
+
+                                return Card(
+                                  margin: const EdgeInsets.only(
+                                      bottom: 8, left: 8, right: 8),
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(12),
+                                    onTap: () {
+                                      // Show order details
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  service,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
+                                              ),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                    horizontal: 8, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: _getStatusColor(status),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: Text(
+                                                  status,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Row(
+                                            children: [
+                                              Icon(Icons.access_time,
+                                                  size: 16, color: Colors.grey[600]),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                timeDisplay,
+                                                style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const Divider(height: 16),
+                                          Row(
+                                            children: [
+                                              if (rating > 0)
+                                                Row(
+                                                  children: [
+                                                    ...List.generate(
+                                                      5,
+                                                          (i) => Icon(
+                                                        i < rating
+                                                            ? Icons.star
+                                                            : Icons.star_border,
+                                                        size: 18,
+                                                        color: i < rating
+                                                            ? Colors.amber
+                                                            : Colors.grey[400],
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                  ],
+                                                ),
+                                              Expanded(
+                                                child: Container(),
+                                              ),
+                                              Text(
+                                                NumberFormat.currency(
+                                                  locale: 'vi_VN',
+                                                  symbol: '₫',
+                                                  decimalDigits: 0,
+                                                ).format(commission),
+                                                style: TextStyle(
+                                                  color: pinkColor,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            );
+                          }).toList(),
                         ],
                       ),
-                    ),
-                  ),
-                ),
-
-                // Order list for this month
-                ValueListenableBuilder<bool>(
-                  valueListenable: isExpanded,
-                  builder: (context, expanded, _) {
-                    if (!expanded) return const SizedBox.shrink();
-
-                    // Skip the first item (summary) and show orders
-                    final orders = monthData.skip(1).toList();
-
-                    if (orders.isEmpty) {
-                      return Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Center(
-                          child: Text(
-                            'Không có đơn hàng trong tháng này',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-
-                    // Group orders by date
-                    final ordersByDate = <String, List<Map<String, dynamic>>>{};
-                    for (var order in orders) {
-                      final dateStr = order['dateDisplay'] as String;
-                      ordersByDate[dateStr] ??= [];
-                      ordersByDate[dateStr]!.add(order);
-                    }
-
-                    final dates = ordersByDate.keys.toList()
-                      ..sort((a, b) => b.compareTo(a));
-
-                    return ListView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      shrinkWrap: true,
-                      itemCount: dates.length,
-                      itemBuilder: (context, dateIndex) {
-                        final date = dates[dateIndex];
-                        final dateOrders = ordersByDate[date]!;
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
-                              child: Text(
-                                date,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            ...dateOrders.map((order) => _buildOrderItem(order)),
-                          ],
-                        );
-                      },
                     );
                   },
                 ),
-
-                const SizedBox(height: 16),
               ],
             );
           },
@@ -2115,6 +3133,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700]),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
+    );
+  }
   Widget _buildTodaySchedule(Map<int, Map<String, bool>> schedule) {
     final now = DateTime.now();
     final day = now.weekday;
@@ -3401,150 +4439,172 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildSalarySection() {
     return FutureBuilder<Map<String, dynamic>>(
-      future: SalaryService.getEstimatedSalary(),
+      future: SalaryService.getEstimatedSalary(AuthService.getCurrentUser()?['id']),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(16.0),
-              child: SizedBox(
-                height: 4,
-                child: LinearProgressIndicator(),
+          return const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
               ),
             ),
           );
         }
 
-        if (snapshot.hasError || !snapshot.hasData) {
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            child: const Padding(
-              padding: EdgeInsets.all(16.0),
-              child: Text('Không thể tải thông tin lương'),
-            ),
-          );
+        if (!snapshot.hasData) {
+          return const SizedBox.shrink();
         }
 
         final salaryData = snapshot.data!;
 
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                const Color(0xFF1E3C72),
-                const Color(0xFF2A5298),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Lương tạm tính (${salaryData['month']})',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '${salaryData['workedDays']}/${salaryData['totalWorkdays']} ngày',
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Lương ước tính ${salaryData['month']}',
                         style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  salaryData['formattedTotal'],
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: mainColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Tạm tính',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: mainColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          mainColor.withOpacity(0.8),
+                          mainColor.withOpacity(0.6),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Tổng giờ làm',
+                        const Text(
+                          'Tổng lương',
                           style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white,
+                            fontSize: 14,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 8),
                         Text(
-                          '${salaryData['totalHours']} giờ',
+                          salaryData['formattedTotal'],
                           style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
                             color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Giờ làm thêm',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withOpacity(0.8),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${salaryData['overtimeHours']} giờ',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSalaryDetailRow(
+                    'Lương cơ bản',
+                    '${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(salaryData['baseSalary'])}',
+                    mainColor,
+                  ),
+                  _buildSalaryDetailRow(
+                    'Số ngày làm việc',
+                    '${salaryData['workedDays']}/${salaryData['totalWorkdays']} ngày',
+                    mainColor,
+                  ),
+                  _buildSalaryDetailRow(
+                    'Tổng giờ làm',
+                    '${salaryData['totalHours']} giờ',
+                    mainColor,
+                  ),
+                  _buildSalaryDetailRow(
+                    'Lương hoa hồng',
+                    '${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(salaryData['totalTip'])}',
+                    Colors.orange,
+                    isLast: true,
+                  ),
+                ],
+              ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildSalaryDetailRow(String label, String value, Color iconColor, {bool isLast = false}) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: iconColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!isLast)
+          Divider(color: Colors.grey.withOpacity(0.2)),
+      ],
     );
   }
 

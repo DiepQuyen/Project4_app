@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:math';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 class ScheduleService {
   static final Random _random = Random();
+  static const String baseUrl = 'http://10.0.2.2:8080';
 
   static Future<List<Map<String, dynamic>>> getUserSchedule() async {
     await Future.delayed(const Duration(milliseconds: 800));
@@ -98,30 +101,32 @@ class ScheduleService {
     return schedules;
   }
 
-  static Future<Map<String, dynamic>> getTodayStatus() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    final now = DateTime.now();
-    final schedules = await getUserSchedule();
+  static Future<Map<String, dynamic>> getTodayStatus(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${baseUrl}/api/v1/work-status/today?userId=$userId'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
 
-    // Filter for today's schedules
-    final todaySchedules = schedules.where((s) =>
-    (s['date'] as DateTime).day == now.day &&
-        (s['date'] as DateTime).month == now.month &&
-        (s['date'] as DateTime).year == now.year
-    ).toList();
-
-    if (todaySchedules.isEmpty) {
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'hasShift': data['hasShift'],
+          'schedules': data['schedules'],
+          'currentStatus': data['currentStatus'],
+          'message': data['message'],
+        };
+      } else {
+        throw Exception('Failed to fetch work status');
+      }
+    } catch (e) {
       return {
         'hasShift': false,
-        'message': 'Không có ca làm việc hôm nay',
-        'status': 'Off'
+        'message': 'Không thể lấy trạng thái làm việc',
+        'status': 'Error',
       };
     }
-
-    return {
-      'hasShift': true,
-      'schedules': todaySchedules,
-      'currentStatus': todaySchedules.first['status'],
-    };
   }
 }

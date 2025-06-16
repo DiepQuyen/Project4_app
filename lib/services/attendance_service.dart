@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:http/http.dart' as http;
+
+import 'auth_service.dart';
 
 class AttendanceService {
+  static const String baseUrl = 'http://10.0.2.2:8080';
   // Get network information
   static Future<Map<String, dynamic>> _getNetworkInfo() async {
     try {
@@ -158,6 +163,34 @@ class AttendanceService {
         'success': false,
         'message': 'Lỗi gửi yêu cầu: ${e.toString()}',
       };
+    }
+  }
+  static Future<Map<String, dynamic>> getTodayWorkStatus() async {
+    try {
+      // Get userId from current session
+      final userId = AuthService.getCurrentUser()?['id'];
+      if (userId == null) {
+        return {'error': 'User not logged in', 'success': false};
+      }
+
+      final response = await http.get(
+        Uri.parse('${baseUrl}/api/v1/work-status/today?userId=$userId'),
+        // headers: await ApiConfig.getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        return {
+          'data': json.decode(response.body),
+          'success': true,
+        };
+      } else {
+        return {
+          'error': 'Failed to load work status: ${response.statusCode}',
+          'success': false
+        };
+      }
+    } catch (e) {
+      return {'error': 'Exception when loading work status: $e', 'success': false};
     }
   }
 }

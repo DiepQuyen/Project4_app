@@ -47,6 +47,8 @@ class AuthService {
         // Store token and user data
         _token = responseData['data']['token'];
         _currentUser = responseData['data']['user'];
+        // log the user in
+        print('Login successful: $_currentUser');
 
         // Save to storage
         final prefs = await SharedPreferences.getInstance();
@@ -82,11 +84,7 @@ class AuthService {
   // Get current user data
   static Map<String, dynamic>? getCurrentUser() {
     if (_currentUser != null) {
-      return {
-        'name': _currentUser!['fullName'],
-        'username': _currentUser!['email'],
-        'avatar': _currentUser!['imageUrl'] ?? 'https://cdn.pixabay.com/photo/2023/02/18/11/00/icon-7797704_1280.png',
-      };
+      return _currentUser;
     }
     return null;
   }
