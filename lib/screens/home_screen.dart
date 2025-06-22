@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +11,7 @@ import '../services/auth_service.dart';
 import '../services/order_service.dart';
 import '../services/salary_service.dart';
 import '../services/schedule_service.dart';
+import 'AttendanceHistoryTab.dart';
 import 'account_screen.dart';
 import 'login_screen.dart';
 import '../services/leave_service.dart';
@@ -29,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool _imageLoaded = false;
   bool _checkedIn = false;
   DateTime? _checkinTime;
+  String? _selectedMonth;
   DateTime? _checkoutTime;
   late AnimationController _animController;
   final List<Map<String, dynamic>> _recentActivities = [];
@@ -37,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   String _earlyCheckoutStatus = 'none'; // 'none', 'pending', 'approved', 'rejected'
   String _earlyCheckoutReason = '';
   DateTime? _earlyCheckoutRequestTime;
-
+  Map<String, bool> _expandedMonths = {};
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -48,8 +51,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ? _buildAttendanceHistory()
           : _currentIndex == 2
           ? _buildWorkScheduleTab()
-          : _currentIndex == 3
-          ? _buildLeaveRequestPage()
           : AccountScreen(
         user: widget.user,
         onLogout: _handleLogout,
@@ -125,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           // Estimated Salary Card -> done
           _buildSalarySection(),
 
-          // Summary Cards
+          // Summary Cards -> còn phần đúng giờ
           const SizedBox(height: 16),
           _buildSummaryCards(),
 
@@ -706,46 +707,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           schedulesByDate[date]!.add(schedule);
         }
 
-        return ListView(
+        return
+
+          ListView(
           padding: const EdgeInsets.all(16),
           children: [
             // Legend
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Chú thích',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _buildLegendItem(color: Colors.green, text: 'Đúng giờ'),
-                      const SizedBox(width: 16),
-                      _buildLegendItem(color: Colors.orange, text: 'Đi muộn'),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _buildLegendItem(color: Colors.red, text: 'Vắng mặt'),
-                      const SizedBox(width: 16),
-                      _buildLegendItem(color: Colors.blue, text: 'Đang làm việc'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
             const SizedBox(height: 16),
 
             // Schedule cards
@@ -1177,7 +1144,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     try {
       // Gọi API lấy dữ liệu
       final response = await http.get(
-        Uri.parse('${OrderService.baseUrl}/api/v1/admin/appointment/today'),
+        Uri.parse('${OrderService.baseUrl}/api/v1/admin/appointment/today?userId=${AuthService.getCurrentUser()?['id']}'),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -1221,6 +1188,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return {};
     }
   }
+  void _refreshHomeData() {
+    // Reset any cached data
+    setState(() {
+      // Force rebuild of the whole screen
+      _currentIndex = 0; // Ensure we're on the home tab
+    });
+  }
   Widget _buildServiceCard(Map<String, dynamic> service) {
     // Status color based on service status
     Color statusColor;
@@ -1228,10 +1202,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     switch (service['status']) {
       case 'Hoàn thành':
+      case 'completed':
         statusColor = Colors.green;
         statusIcon = Icons.check_circle;
         break;
       case 'Đang thực hiện':
+      case 'pending':
         statusColor = Colors.blue;
         statusIcon = Icons.pending_actions;
         break;
@@ -1331,43 +1307,328 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _showServiceDetailsDialog(Map<String, dynamic> service) {
+    bool isCompleted = service['status'] == 'Hoàn thành' || service['status'] == 'completed';
+    bool isUpdating = false;
+
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.spa, color: pinkColor),
-              const SizedBox(width: 8),
-              const Text('Chi tiết dịch vụ'),
-            ],
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => StatefulBuilder(
+        builder: (context, setState) {
+          // Define status color based on service status
+          final Color statusColor = isCompleted
+              ? Colors.green.shade700
+              : Colors.orange.shade700;
+
+          return AlertDialog(
+            contentPadding: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            content: Container(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header with gradient
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          mainColor.withOpacity(0.9),
+                          mainColor.withOpacity(0.7),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.3),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.spa, color: Colors.white, size: 24),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Chi tiết dịch vụ',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                service['service'] ?? 'N/A',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Status badge
+                  Container(
+                    color: statusColor.withOpacity(0.1),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          isCompleted ? Icons.check_circle : Icons.pending_actions,
+                          color: statusColor,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          service['status'] ?? 'N/A',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: statusColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Content
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                    ),
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildEnhancedDetailRow(
+                          'Khách hàng',
+                          service['customerName'] ?? 'N/A',
+                          Icons.person,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildEnhancedDetailRow(
+                          'Thời gian',
+                          service['timeDisplay'] ?? 'N/A',
+                          Icons.access_time,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildEnhancedDetailRow(
+                          'Hoa hồng',
+                          NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0)
+                              .format(service['commission'] ?? 0),
+                          Icons.monetization_on,
+                          valueColor: Colors.green.shade800,
+                          valueFontWeight: FontWeight.bold,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Buttons
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(20),
+                        bottomRight: Radius.circular(20),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text('Đóng', style: TextStyle(color: Colors.grey.shade600)),
+                        ),
+                        const SizedBox(width: 12),
+                        if (!isCompleted)
+                          ElevatedButton(
+                            onPressed: isUpdating ? null : () async {
+                              setState(() {
+                                isUpdating = true;
+                              });
+
+                              print(service);
+                              final result = await _markServiceAsCompleted(service['id']);
+
+                              // First close the dialog
+                              Navigator.pop(context);
+
+                              // Then show the snackbar notification after dialog is closed
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      Icon(
+                                        result['success'] ? Icons.check_circle : Icons.error,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(child: Text(result['message'])),
+                                    ],
+                                  ),
+                                  backgroundColor: result['success'] ? Colors.green : Colors.red,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              );
+
+                              if (result['success']) {
+                                setState(() {});
+
+                                // Trigger a full rebuild of the main screen
+                                if (mounted) {
+                                  setState(() {
+                                    // Update the service status locally
+                                    service['status'] = 'Hoàn thành';
+                                  });
+
+                                  // Force refresh of the home page data
+                                  _refreshHomeData();
+                                }
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: mainColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 2,
+                            ),
+                            child: isUpdating
+                                ? SizedBox(width: 20, height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle_outline, size: 18),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Đánh dấu hoàn thành',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEnhancedDetailRow(String label, String value, IconData icon,
+      {Color? valueColor, FontWeight? valueFontWeight}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: mainColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Icon(icon, size: 18, color: mainColor),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDetailRow('Dịch vụ:', service['service']),
-              _buildDetailRow('Khách hàng:', service['customerName']),
-              _buildDetailRow('Thời gian:', service['timeDisplay']),
-              _buildDetailRow('Trạng thái:', service['status']),
-              _buildDetailRow('Hoa hồng:', NumberFormat.currency(
-                  locale: 'vi_VN',
-                  symbol: '₫',
-                  decimalDigits: 0
-              ).format(service['commission'])),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: valueFontWeight ?? FontWeight.w500,
+                  color: valueColor ?? Colors.black87,
+                ),
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Đóng'),
-              style: TextButton.styleFrom(foregroundColor: pinkColor),
-            ),
-          ],
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        );
-      },
+        ),
+      ],
     );
+  }
+  Future<Map<String, dynamic>> _markServiceAsCompleted(int serviceId) async {
+    try {
+      final userId = AuthService.getCurrentUser()?['id'];
+      if (userId == null) {
+        return {
+          'success': false,
+          'message': 'Không thể xác định người dùng hiện tại',
+        };
+      }
+
+      final response = await http.put(
+        Uri.parse('${OrderService.baseUrl}/api/v1/admin/appointment/$serviceId/complete'),
+        headers: {
+          'Content-Type': 'application/json',
+          // Add authorization header if needed
+        },
+        body: jsonEncode({
+          'userId': userId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': 'Dịch vụ đã được đánh dấu hoàn thành',
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Không thể cập nhật trạng thái: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      print('Error marking service as completed: $e');
+      return {
+        'success': false,
+        'message': 'Lỗi: ${e.toString()}',
+      };
+    }
   }
   Widget _buildAttendanceButton() {
     final now = DateTime.now();
@@ -1640,8 +1901,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget _buildHeaderSection(DateTime now, DateFormat dateFormat,
       DateFormat timeFormat, Color color) {
     // Get weekday name using DateFormat
-    final String weekdayName = DateFormat('EEEE').format(now);
+    final String weekdayName = getVietnameseWeekday(now.weekday);
+    String datePart = DateFormat('dd/MM/yyyy').format(now);
 
+    String fullDateString = '$weekdayName, $datePart';
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -1714,7 +1977,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${dateFormat.format(now)}',
+                      '${fullDateString}',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -1764,6 +2027,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ],
       ),
     );
+  }
+  String getVietnameseWeekday(int weekday) {
+    switch (weekday) {
+      case DateTime.monday:
+        return 'Thứ 2';
+      case DateTime.tuesday:
+        return 'Thứ 3';
+      case DateTime.wednesday:
+        return 'Thứ 4';
+      case DateTime.thursday:
+        return 'Thứ 5';
+      case DateTime.friday:
+        return 'Thứ 6';
+      case DateTime.saturday:
+        return 'Thứ 7';
+      case DateTime.sunday:
+        return 'Chủ nhật';
+      default:
+        return '';
+    }
   }
 
   Widget _buildQuickActionButtons() {
@@ -1871,7 +2154,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return FutureBuilder<Map<String, dynamic>>(
       future: SalaryService.getEstimatedSalary(AuthService.getCurrentUser()?['id']),
       builder: (context, snapshot) {
-        // Default values in case data is loading or not available
         String attendanceValue = '0/0';
 
         if (snapshot.hasData) {
@@ -1887,9 +2169,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Expanded(
                 child: _buildSummaryCard(
                   icon: Icons.calendar_month,
-                  title: 'Tháng này',
+                  title: 'Ngày làm việc',
                   value: attendanceValue,
-                  subtitle: 'ngày làm việc',
+                  subtitle: 'ngày',
                 ),
               ),
               const SizedBox(width: 12),
@@ -1909,6 +2191,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+
   Widget _buildWeeklyStats() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1926,57 +2209,78 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: pinkColor,
+                  color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildStatColumn('T2', 0.9),
-                  _buildStatColumn('T3', 0.7),
-                  _buildStatColumn('T4', 1.0),
-                  _buildStatColumn('T5', 0.8),
-                  _buildStatColumn('T6', 0.95),
-                  _buildStatColumn('T7', 0.5),
-                  _buildStatColumn('CN', 0.0),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Tổng giờ làm: 38 giờ',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade800,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Row(
+              FutureBuilder<List<dynamic>>(
+                future: _fetchCombinedData(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator()),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Lỗi: ${snapshot.error}'));
+                  }
+
+                  final weekData = snapshot.data![0] as List<Map<String, dynamic>>;
+                  final compareMessage = snapshot.data![1] as String;
+
+                  double totalHours = 0;
+                  double maxHours = 0;
+                  for (var day in weekData) {
+                    final hours = (day['totalHours'] as num).toDouble();
+                    totalHours += hours;
+                    if (hours > maxHours) maxHours = hours;
+                  }
+                  maxHours = maxHours > 0 ? maxHours : 8;
+
+                  return Column(
                     children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: pinkColor,
-                          shape: BoxShape.circle,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: weekData.map((day) {
+                          final double hours = (day['totalHours'] as num).toDouble();
+                          final double ratio = maxHours > 0 ? (hours / maxHours) : 0;
+                          return _buildStatColumn(day['day'], ratio, hours);
+                        }).toList(),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Thời gian làm việc',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade600,
-                        ),
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Tổng giờ làm: ${totalHours.toStringAsFixed(1)} giờ',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[800],
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              const Icon(Icons.trending_up, size: 16, color: Colors.green),
+                              const SizedBox(width: 4),
+                              Text(
+                                compareMessage,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                ],
+                  );
+                },
               ),
             ],
           ),
@@ -1985,18 +2289,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildStatColumn(String label, double ratio) {
+// Updated to show hours
+  Widget _buildStatColumn(String label, double ratio, double hours) {
     final height = ratio > 0 ? 80.0 * ratio : 2.0;
 
     return Column(
       children: [
         SizedBox(height: 80 - height),
         Container(
-          width: 20,
+          width: 24,
           height: height,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: ratio > 0 ? pinkColor : Colors.grey.shade300,
+            color: pinkColor.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(4),
           ),
         ),
         const SizedBox(height: 8),
@@ -2004,13 +2309,104 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           label,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey.shade700,
             fontWeight: FontWeight.w500,
+            color: Colors.grey[600],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          hours > 0 ? hours.toString() : '',
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.grey[500],
           ),
         ),
       ],
     );
   }
+
+  Future<List<dynamic>> _fetchCombinedData() async {
+    final statsFuture = _fetchWeeklyStats();
+    final compareFuture = _fetchWeekComparison();
+    return await Future.wait([statsFuture, compareFuture]);
+  }
+
+
+  Future<String> _fetchWeekComparison() async {
+    final userId = AuthService.getCurrentUser()?['id'];
+    if (userId == null) {
+      throw Exception('User ID not found');
+    }
+
+    final response = await http.get(
+      Uri.parse('${OrderService.baseUrl}/api/v1/admin/attendance/compare-week/$userId'),
+      headers: {
+        'Content-Type': 'application/json',
+        // Authorization nếu cần
+      },
+    );
+
+    if (response.statusCode == 200) {
+      // Ví dụ: response.body = {"message": "tăng 5% so với tuần trước"}
+      final data = response.body;
+      return data;
+    } else {
+      throw Exception('Lỗi khi lấy dữ liệu so sánh tuần');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchWeeklyStats() async {
+    try {
+      final userId = AuthService.getCurrentUser()?['id'];
+      if (userId == null) {
+        throw Exception('User ID not found');
+      }
+
+      final response = await http.get(
+        Uri.parse('${OrderService.baseUrl}/api/v1/admin/attendance/find-by-user/$userId'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data);
+      } else {
+        throw Exception('Failed to load weekly stats: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching weekly stats: $e');
+      throw Exception('Failed to load weekly stats: $e');
+    }
+  }
+
+  // Widget _buildStatColumn(String label, double ratio) {
+  //   final height = ratio > 0 ? 80.0 * ratio : 2.0;
+  //
+  //   return Column(
+  //     children: [
+  //       SizedBox(height: 80 - height),
+  //       Container(
+  //         width: 20,
+  //         height: height,
+  //         decoration: BoxDecoration(
+  //           borderRadius: BorderRadius.circular(10),
+  //           color: ratio > 0 ? pinkColor : Colors.grey.shade300,
+  //         ),
+  //       ),
+  //       const SizedBox(height: 8),
+  //       Text(
+  //         label,
+  //         style: TextStyle(
+  //           fontSize: 12,
+  //           color: Colors.grey.shade700,
+  //           fontWeight: FontWeight.w500,
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   Widget _buildRecentAttendanceSection(DateFormat timeFormat,
       DateFormat dateFormat) {
@@ -2027,7 +2423,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: pinkColor,
+                  color: Colors.black87,
                 ),
               ),
               TextButton(
@@ -2085,7 +2481,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   title,
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
                   ),
                 ),
               ],
@@ -2377,10 +2774,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 const SizedBox(height: 20),
                 TabBar(
-                  indicatorColor: Colors.white,
+                  indicatorColor: Colors.black87,
                   indicatorWeight: 3,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white.withOpacity(0.7),
+                  labelColor: Colors.black87,
+                  labelStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  unselectedLabelColor: Colors.white,
                   tabs: const [
                     Tab(text: 'Điểm danh'),
                     Tab(text: 'Đơn khách'),
@@ -2405,335 +2806,194 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
   }
-
   Widget _buildAttendanceHistoryTab() {
-    final dateFormat = DateFormat('dd/MM/yyyy');
-    final timeFormat = DateFormat('HH:mm');
+    return const AttendanceHistoryTab();
+  }
+  String convertToVietnameseDate(String englishDate) {
+    // Map of English weekday names to Vietnamese
+    final Map<String, String> weekdayMap = {
+      'Monday': 'Thứ hai',
+      'Tuesday': 'Thứ ba',
+      'Wednesday': 'Thứ tư',
+      'Thursday': 'Thứ năm',
+      'Friday': 'Thứ sáu',
+      'Saturday': 'Thứ bảy',
+      'Sunday': 'Chủ nhật',
+    };
 
-    // Mock data for attendance history
-    final attendanceRecords = List.generate(
-      30,
-          (index) {
-        final date = DateTime.now().subtract(Duration(days: index));
-        final isWeekend = date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+    // Check for each English weekday and replace with Vietnamese equivalent
+    for (final entry in weekdayMap.entries) {
+      if (englishDate.contains(entry.key)) {
+        return englishDate.replaceFirst(entry.key, entry.value);
+      }
+    }
 
-        // Skip weekends or random days for variety
-        if (isWeekend || (index > 5 && index % 7 == 0)) {
-          return {
-            'date': date,
-            'checkin': null,
-            'checkout': null,
-            'status': 'absence',
-            'earlyCheckoutStatus': null,
-            'earlyCheckoutReason': null,
-          };
-        }
+    return englishDate; // Return original if no match found
+  }
+  List<Map<String, dynamic>> _getFakeAttendanceData() {
+    final now = DateTime.now();
+    final data = <Map<String, dynamic>>[];
 
-        // Regular attendance
-        final checkinTime = DateTime(
-            date.year, date.month, date.day,
-            7 + (index % 2), 45 + (index % 15)
-        );
+    // Generate data for the last 30 days
+    for (int i = 30; i >= 0; i--) {
+      final date = now.subtract(Duration(days: i));
 
-        final checkoutTime = index % 10 == 0
-            ? DateTime(date.year, date.month, date.day, 16, 30)
-            : DateTime(date.year, date.month, date.day, 17, 30 + (index % 30));
+      // Skip weekends
+      if (date.weekday == DateTime.saturday || date.weekday == DateTime.sunday) {
+        continue;
+      }
 
-        final isEarlyCheckout = checkoutTime.hour < 17 ||
-            (checkoutTime.hour == 17 && checkoutTime.minute < 30);
+      // Skip some random days to simulate days off
+      if (date.day % 7 == 0) {
+        continue;
+      }
 
-        return {
-          'date': date,
-          'checkin': checkinTime,
-          'checkout': checkoutTime,
-          'status': 'present',
-          'earlyCheckoutStatus': isEarlyCheckout ?
-          (index % 3 == 0 ? 'approved' : (index % 3 == 1 ? 'pending' : 'rejected')) : null,
-          'earlyCheckoutReason': isEarlyCheckout ?
-          'Lý do về sớm ${index % 3 == 0 ? "(đã duyệt)" : index % 3 == 1 ? "(đang chờ)" : "(từ chối)"}' : null,
-        };
-      },
-    );
+      // Randomize status
+      String status;
+      String checkInTime;
+      String checkOutTime;
 
-    // Filter variables
-    final months = <String>['Tất cả', ...List.generate(
-        6, (i) => DateFormat('MM/yyyy').format(DateTime.now().subtract(Duration(days: 30 * i)))
-    ).toSet().toList()];
+      final random = Random();
+      final rand = random.nextDouble();
 
-    final statusOptions = ['Tất cả', 'Đi làm', 'Vắng mặt', 'Đi muộn', 'Về sớm'];
+      if (rand < 0.7) {
+        status = 'onTime';
+        checkInTime = '08:${random.nextInt(10).toString().padLeft(2, '0')}';
+        checkOutTime = '17:${random.nextInt(30).toString().padLeft(2, '0')}';
+      } else if (rand < 0.85) {
+        status = 'late';
+        checkInTime = '08:${(30 + random.nextInt(30)).toString().padLeft(2, '0')}';
+        checkOutTime = '17:${random.nextInt(30).toString().padLeft(2, '0')}';
+      } else if (rand < 0.95) {
+        status = 'earlyCheckout';
+        checkInTime = '08:${random.nextInt(10).toString().padLeft(2, '0')}';
+        checkOutTime = '16:${random.nextInt(30).toString().padLeft(2, '0')}';
+      } else {
+        status = 'absent';
+        checkInTime = '-- : --';
+        checkOutTime = '-- : --';
+      }
 
-    final monthValue = ValueNotifier<String>(months[0]);
-    final statusValue = ValueNotifier<String>(statusOptions[0]);
+      data.add({
+        'date': date.toIso8601String(),
+        'checkInTime': checkInTime,
+        'checkOutTime': checkOutTime,
+        'status': status,
+        'location': 'Cơ sở ${1 + random.nextInt(3)}',
+      });
+    }
 
-    return Column(
-      children: [
-        // Filter section
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              ),
-            ],
+    return data;
+  }
+
+  String _getStatusText(String status) {
+    switch (status) {
+      case 'onTime':
+        return 'Đúng giờ';
+      case 'late':
+        return 'Đi muộn';
+      case 'absent':
+        return 'Vắng mặt';
+      case 'earlyCheckout':
+        return 'Về sớm';
+      default:
+        return 'Không xác định';
+    }
+  }
+
+  Color _getStatusColor(String? status) {
+    switch (status?.toLowerCase()) {
+      case 'on time':
+        return Colors.green;
+      case 'late':
+        return Colors.orange;
+      case 'absent':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+// Helper method to build days for a specific month
+  List<Widget> _buildDaysForMonth(Map<String, List<Map<String, dynamic>>> daysData) {
+    final dayKeys = daysData.keys.toList()..sort((a, b) => b.compareTo(a)); // Sort by newest day first
+
+    return dayKeys.map((day) {
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: ExpansionTile(
+          title: Text(
+            DateFormat('EEEE, dd/MM').format(DateTime.parse(daysData[day]![0]['date'])),
+            style: const TextStyle(fontWeight: FontWeight.w500),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Lọc theo:',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
+          subtitle: Text('${daysData[day]!.length} ca làm việc'),
+          children: daysData[day]!.map((shift) {
+            final checkInTime = DateTime.parse(shift['checkInTime']);
+            final checkOutTime = shift['checkOutTime'] != null
+                ? DateTime.parse(shift['checkOutTime'])
+                : null;
+
+            return ListTile(
+              leading: _getShiftIcon(shift['shift']),
+              title: Text(shift['shift'] == 'MORNING' ? 'Ca sáng' : 'Ca chiều'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: ValueListenableBuilder<String>(
-                      valueListenable: monthValue,
-                      builder: (context, value, _) {
-                        return DropdownButtonFormField<String>(
-                          value: value,
-                          decoration: InputDecoration(
-                            labelText: 'Tháng',
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          items: months.map((month) {
-                            return DropdownMenuItem(
-                              value: month,
-                              child: Text(month),
-                            );
-                          }).toList(),
-                          onChanged: (newValue) {
-                            if (newValue != null) {
-                              monthValue.value = newValue;
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ValueListenableBuilder<String>(
-                      valueListenable: statusValue,
-                      builder: (context, value, _) {
-                        return DropdownButtonFormField<String>(
-                          value: value,
-                          decoration: InputDecoration(
-                            labelText: 'Trạng thái',
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          items: statusOptions.map((status) {
-                            return DropdownMenuItem(
-                              value: status,
-                              child: Text(status),
-                            );
-                          }).toList(),
-                          onChanged: (newValue) {
-                            if (newValue != null) {
-                              statusValue.value = newValue;
-                            }
-                          },
-                        );
-                      },
-                    ),
-                  ),
+                  Text('Check-in: ${DateFormat('HH:mm').format(checkInTime)}'),
+                  if (checkOutTime != null)
+                    Text('Check-out: ${DateFormat('HH:mm').format(checkOutTime)}'),
+                  if (checkOutTime != null)
+                    Text('Thời gian: ${checkOutTime.difference(checkInTime).inMinutes} phút'),
                 ],
               ),
-            ],
-          ),
+              trailing: _getStatusIcon(shift['status']),
+            );
+          }).toList(),
         ),
+      );
+    }).toList();
+  }
 
-        // Attendance list
-        Expanded(
-          child: ValueListenableBuilder<String>(
-            valueListenable: statusValue,
-            builder: (context, statusValue, child) {
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    for (final record in attendanceRecords)
-                      if (_filterRecord(record, monthValue.value, statusValue))
-                        Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: _getStatusColor(record['status']?.toString() ?? '').withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Icon(
-                                        _getStatusIcon(record['status']?.toString() ?? ''),
-                                        color: _getStatusColor(record['status']?.toString() ?? ''),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            dateFormat.format(record['date'] as DateTime),
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _getStatusText(record['status']?.toString() ?? ''),
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              color: _getStatusColor(record['status']?.toString() ?? ''),
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (record['checkin'] != null || record['checkout'] != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 16),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              const Text(
-                                                'Giờ vào',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                record['checkin'] != null
-                                                    ? timeFormat.format(record['checkin'] as DateTime)
-                                                    : '---',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: record['checkin'] != null
-                                                      ? Colors.black87
-                                                      : Colors.grey,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              const Text(
-                                                'Giờ ra',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: Colors.grey,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                record['checkout'] != null
-                                                    ? timeFormat.format(record['checkout'] as DateTime)
-                                                    : '---',
-                                                style: TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: record['checkout'] != null
-                                                      ? Colors.black87
-                                                      : Colors.grey,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                if (record['earlyCheckoutReason'] != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 12),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade100,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(
-                                                Icons.info_outline,
-                                                size: 16,
-                                                color: _getEarlyCheckoutStatusColor(
-                                                    record['earlyCheckoutStatus']?.toString() ?? ''),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Yêu cầu về sớm',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: _getEarlyCheckoutStatusColor(
-                                                      record['earlyCheckoutStatus']?.toString() ?? ''),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            record['earlyCheckoutReason']?.toString() ?? '',
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              color: Colors.black87,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ),
-      ],
+// Helper method to organize attendance data by month and day
+  Map<String, Map<String, List<Map<String, dynamic>>>> _organizeAttendanceByMonthAndDay(List<Map<String, dynamic>> records) {
+    final result = <String, Map<String, List<Map<String, dynamic>>>>{};
+
+    for (var record in records) {
+      // Parse date from record - adjust field names based on your API response
+      final DateTime date = DateTime.parse(record['date'] ?? record['checkInTime']);
+      final String monthKey = DateFormat('MM/yyyy').format(date);
+      final String dayKey = DateFormat('yyyy-MM-dd').format(date);
+
+      // Initialize structures if they don't exist
+      result.putIfAbsent(monthKey, () => {});
+      result[monthKey]!.putIfAbsent(dayKey, () => []);
+
+      // Add the record to the appropriate day
+      result[monthKey]![dayKey]!.add(record);
+    }
+
+    return result;
+  }
+
+// Visual indicators for shift status
+  Widget _getStatusIcon(String status) {
+    switch (status.toUpperCase()) {
+      case 'PRESENT':
+        return const Icon(Icons.check_circle, color: Colors.green);
+      case 'LATE':
+        return const Icon(Icons.warning, color: Colors.orange);
+      case 'ABSENT':
+        return const Icon(Icons.cancel, color: Colors.red);
+      default:
+        return const Icon(Icons.check_circle_outline, color: Colors.grey);
+    }
+  }
+
+// Icon for shift type
+  Widget _getShiftIcon(String shift) {
+    return Icon(
+      shift.toUpperCase() == 'MORNING' ? Icons.wb_sunny : Icons.wb_twilight,
+      color: shift.toUpperCase() == 'MORNING' ? Colors.orange : Colors.indigo,
     );
   }
 
@@ -2763,40 +3023,30 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
 // Helper method to get status icon
-  IconData _getStatusIcon(String status) {
-    switch (status) {
-      case 'present':
-        return Icons.check_circle;
-      case 'absence':
-        return Icons.cancel;
-      default:
-        return Icons.access_time;
-    }
-  }
+//   IconData _getStatusIcon(String status) {
+//     switch (status) {
+//       case 'present':
+//         return Icons.check_circle;
+//       case 'absence':
+//         return Icons.cancel;
+//       default:
+//         return Icons.access_time;
+//     }
+//   }
 
 // Helper method to get status color
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'present':
-        return Colors.green;
-      case 'absence':
-        return Colors.red;
-      default:
-        return Colors.orange;
-    }
-  }
+//   Color _getStatusColor(String status) {
+//     switch (status) {
+//       case 'present':
+//         return Colors.green;
+//       case 'absence':
+//         return Colors.red;
+//       default:
+//         return Colors.orange;
+//     }
+//   }
 
 // Helper method to get status text
-  String _getStatusText(String status) {
-    switch (status) {
-      case 'present':
-        return 'Có mặt';
-      case 'absence':
-        return 'Vắng mặt';
-      default:
-        return 'Chưa xác định';
-    }
-  }
 
 // Helper method to get early checkout status color
   Color _getEarlyCheckoutStatusColor(String status) {
@@ -2813,7 +3063,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
   Widget _buildOrdersHistoryTab() {
     return FutureBuilder<Map<String, List<dynamic>>>(
-      future: OrderService.getMonthlyHistory(),
+      future: OrderService.getMonthlyHistory(AuthService.getCurrentUser()?['id']),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -2833,297 +3083,349 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           );
         }
 
-        final orderHistory = snapshot.data!;
-        final months = orderHistory.keys.toList()
+        final Map<String, List<dynamic>> allHistory = snapshot.data!;
+        final List<String> allMonths = allHistory.keys.toList()
           ..sort((a, b) => DateFormat('MM/yyyy').parse(b).compareTo(
               DateFormat('MM/yyyy').parse(a)));
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: months.length,
-          itemBuilder: (context, monthIndex) {
-            final month = months[monthIndex];
-            final monthData = orderHistory[month]!;
-            final monthSummary = monthData.isNotEmpty ? monthData[0] : null;
+        String? selectedMonth;
 
-            // Group orders by date and shift
-            Map<String, Map<String, List<dynamic>>> ordersByDateAndShift = {};
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final filteredMonths = selectedMonth == null
+                ? allMonths
+                : allMonths.where((m) => m == selectedMonth).toList();
 
-            for (var i = 1; i < monthData.length; i++) {
-              final order = monthData[i];
-              final dateStr = order['dateDisplay'] ?? '';
-
-              if (dateStr.isEmpty) continue;
-
-              // Determine shift (Morning: before 12, Afternoon: after 12)
-              final orderTime = order['startTime'] as DateTime?;
-              final shift = orderTime == null ? 'Khác' :
-              (orderTime.hour < 12 ? 'Sáng' : 'Chiều');
-
-              ordersByDateAndShift[dateStr] ??= {};
-              ordersByDateAndShift[dateStr]![shift] ??= [];
-              ordersByDateAndShift[dateStr]![shift]!.add(order);
-            }
-
-            // Sort dates in descending order
-            final sortedDates = ordersByDateAndShift.keys.toList()
-              ..sort((a, b) => DateFormat('dd/MM/yyyy').parse(b).compareTo(
-                  DateFormat('dd/MM/yyyy').parse(a)));
-
-            // Expandable month section
-            return ExpansionTile(
-              initiallyExpanded: monthIndex == 0,
-              backgroundColor: Colors.grey[50],
-              collapsedBackgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: Colors.grey.shade200),
-              ),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: mainColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      month,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: mainColor,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  if (monthSummary != null) ...[
-                    Icon(Icons.paid, size: 18, color: Colors.green[700]),
-                    const SizedBox(width: 4),
-                    Text(
-                      NumberFormat.currency(
-                        locale: 'vi_VN',
-                        symbol: '₫',
-                        decimalDigits: 0,
-                      ).format(monthSummary['totalCommission'] ?? 0),
-                      style: TextStyle(
-                        color: Colors.green[700],
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              subtitle: Text(
-                '${monthSummary?['totalOrders'] ?? 0} đơn hàng',
-                style: TextStyle(color: Colors.grey[600], fontSize: 13),
-              ),
+            return Column(
               children: [
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: sortedDates.length,
-                  itemBuilder: (context, dateIndex) {
-                    final date = sortedDates[dateIndex];
-                    final shiftsMap = ordersByDateAndShift[date]!;
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: DropdownButtonFormField<String>(
+                    value: selectedMonth,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Lọc theo tháng',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('Tất cả các tháng'),
+                      ),
+                      ...allMonths.map(
+                            (month) => DropdownMenuItem<String>(
+                          value: month,
+                          child: Text(month),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        selectedMonth = value;
+                      });
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: filteredMonths.length,
+                    itemBuilder: (context, monthIndex) {
+                      final month = filteredMonths[monthIndex];
+                      final monthData = allHistory[month]!;
+                      final monthSummary =
+                      monthData.isNotEmpty ? monthData[0] : null;
 
-                    // Parse date for better display
-                    final DateTime parsedDate = DateFormat('dd/MM/yyyy').parse(date);
-                    final String dayOfWeek = DateFormat('EEEE').format(parsedDate);
+                      // Nhóm theo ngày và ca
+                      Map<String, Map<String, List<dynamic>>> ordersByDateAndShift = {};
 
-                    return Padding(
-                      padding: const EdgeInsets.only(
-                          left: 8, right: 8, bottom: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Date header
-                          Container(
-                            margin: const EdgeInsets.symmetric(vertical: 12),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    date.split('/').take(2).join('/'),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  dayOfWeek,
-                                  style: TextStyle(
-                                    color: Colors.grey[700],
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                      for (var i = 1; i < monthData.length; i++) {
+                        final order = monthData[i];
+                        final dateStr = order['dateDisplay'] ?? '';
 
-                          // Shifts sections
-                          ...shiftsMap.entries.map((entry) {
-                            final shift = entry.key;
-                            final orders = entry.value;
+                        if (dateStr.isEmpty) continue;
 
-                            return ExpansionTile(
-                              initiallyExpanded: true,
-                              title: Row(
-                                children: [
-                                  Icon(
-                                    shift == 'Sáng'
-                                        ? Icons.wb_sunny
-                                        : Icons.wb_twilight,
-                                    size: 18,
-                                    color: shift == 'Sáng'
-                                        ? Colors.orange
-                                        : Colors.indigo,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    shift,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '(${orders.length} đơn)',
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
+                        final orderTime = order['startTime'] as DateTime?;
+                        final shift = orderTime == null
+                            ? 'Khác'
+                            : (orderTime.hour < 12 ? 'Sáng' : 'Chiều');
+
+                        ordersByDateAndShift[dateStr] ??= {};
+                        ordersByDateAndShift[dateStr]![shift] ??= [];
+                        ordersByDateAndShift[dateStr]![shift]!.add(order);
+                      }
+
+                      final sortedDates = ordersByDateAndShift.keys.toList()
+                        ..sort((a, b) => DateFormat('dd/MM/yyyy')
+                            .parse(b)
+                            .compareTo(DateFormat('dd/MM/yyyy').parse(a)));
+
+                      return ExpansionTile(
+                        initiallyExpanded: monthIndex == 0,
+                        backgroundColor: Colors.grey[50],
+                        collapsedBackgroundColor: Colors.grey[50],
+                        collapsedShape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: Colors.grey.shade200),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: Colors.grey.shade200),
+                        ),
+                        title: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: mainColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
                               ),
-                              children: orders.map<Widget>((order) {
-                                final service = order['service'] ?? 'Dịch vụ';
-                                final timeDisplay = order['timeDisplay'] ?? '';
-                                final commission = order['commission'] ?? 0;
-                                final status = order['status'] ?? '';
-                                final rating = order['rating'] ?? 0;
+                              child: Text(
+                                month,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: mainColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            if (monthSummary != null) ...[
+                              Icon(Icons.paid, size: 18, color: Colors.green[700]),
+                              const SizedBox(width: 4),
+                              Text(
+                                NumberFormat.currency(
+                                  locale: 'vi_VN',
+                                  symbol: '₫',
+                                  decimalDigits: 0,
+                                ).format(monthSummary['totalCommission'] ?? 0),
+                                style: TextStyle(
+                                  color: Colors.green[700],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        subtitle: Text(
+                          '${monthSummary?['totalOrders'] ?? 0} đơn hàng',
+                          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                        ),
+                        children: [
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: sortedDates.length,
+                            itemBuilder: (context, dateIndex) {
+                              final date = sortedDates[dateIndex];
+                              final shiftsMap = ordersByDateAndShift[date]!;
 
-                                return Card(
-                                  margin: const EdgeInsets.only(
-                                      bottom: 8, left: 8, right: 8),
-                                  elevation: 2,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(12),
-                                    onTap: () {
-                                      // Show order details
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  service,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 15,
-                                                  ),
-                                                ),
-                                              ),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                    horizontal: 8, vertical: 4),
-                                                decoration: BoxDecoration(
-                                                  color: _getStatusColor(status),
-                                                  borderRadius: BorderRadius.circular(12),
-                                                ),
-                                                child: Text(
-                                                  status,
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
+                              final DateTime parsedDate =
+                              DateFormat('dd/MM/yyyy').parse(date);
+                              final dayOfWeek =
+                              DateFormat('EEEE', 'vi_VN').format(parsedDate);
+
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                    left: 8, right: 8, bottom: 16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey[200],
+                                            borderRadius:
+                                            BorderRadius.circular(8),
                                           ),
-                                          const SizedBox(height: 8),
-                                          Row(
-                                            children: [
-                                              Icon(Icons.access_time,
-                                                  size: 16, color: Colors.grey[600]),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                timeDisplay,
-                                                style: TextStyle(
-                                                  color: Colors.grey[600],
-                                                  fontSize: 13,
-                                                ),
-                                              ),
-                                            ],
+                                          child: Text(
+                                            date.split('/').take(2).join('/'),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                            ),
                                           ),
-                                          const Divider(height: 16),
-                                          Row(
-                                            children: [
-                                              if (rating > 0)
-                                                Row(
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          dayOfWeek,
+                                          style: TextStyle(
+                                            color: Colors.black87,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    ...shiftsMap.entries.map((entry) {
+                                      final shift = entry.key;
+                                      final orders = entry.value;
+
+                                      return ExpansionTile(
+                                        initiallyExpanded: true,
+                                        title: Row(
+                                          children: [
+                                            Icon(
+                                              shift == 'Sáng'
+                                                  ? Icons.wb_sunny
+                                                  : Icons.wb_twilight,
+                                              size: 18,
+                                              color: shift == 'Sáng'
+                                                  ? Colors.orange
+                                                  : Colors.indigo,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              shift,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              '(${orders.length} đơn)',
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        children: orders.map<Widget>((order) {
+                                          final service = order['service'] ?? 'Dịch vụ';
+                                          final timeDisplay =
+                                              order['timeDisplay'] ?? '';
+                                          final commission =
+                                              order['commission'] ?? 0;
+                                          final status = order['status'] ?? '';
+
+                                          return Card(
+                                            margin: const EdgeInsets.symmetric(vertical: 8),
+                                            elevation: 0,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(16),
+                                              side: BorderSide(color: Colors.grey.shade200),
+                                            ),
+                                            color: const Color(0xFFFFF5F7),
+                                            child: InkWell(
+                                              borderRadius: BorderRadius.circular(16),
+                                              onTap: () {
+                                                // TODO: mở chi tiết đơn hàng
+                                              },
+                                              child: Padding(
+                                                padding: const EdgeInsets.all(16),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
-                                                    ...List.generate(
-                                                      5,
-                                                          (i) => Icon(
-                                                        i < rating
-                                                            ? Icons.star
-                                                            : Icons.star_border,
-                                                        size: 18,
-                                                        color: i < rating
-                                                            ? Colors.amber
-                                                            : Colors.grey[400],
-                                                      ),
+                                                    /// Hàng đầu: Tên dịch vụ + Trạng thái
+                                                    Row(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        const Icon(Icons.design_services, size: 20, color: Colors.pink),
+                                                        const SizedBox(width: 8),
+                                                        Expanded(
+                                                          child: Text(
+                                                            service,
+                                                            style: const TextStyle(
+                                                              fontWeight: FontWeight.w600,
+                                                              fontSize: 16,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                                          decoration: BoxDecoration(
+                                                            color: _getStatusColor(status).withOpacity(0.9),
+                                                            borderRadius: BorderRadius.circular(20),
+                                                          ),
+                                                          child: Row(
+                                                            children: [
+                                                              Icon(
+                                                                Icons.check_circle,
+                                                                size: 14,
+                                                                color: Colors.white,
+                                                              ),
+                                                              const SizedBox(width: 4),
+                                                              Text(
+                                                                status,
+                                                                style: const TextStyle(
+                                                                  color: Colors.white,
+                                                                  fontSize: 12,
+                                                                  fontWeight: FontWeight.w500,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
-                                                    const SizedBox(width: 8),
+
+                                                    const SizedBox(height: 12),
+
+                                                    /// Hàng thứ 2: Thời gian
+                                                    Row(
+                                                      children: [
+                                                        const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                                                        const SizedBox(width: 6),
+                                                        Text(
+                                                          timeDisplay,
+                                                          style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                                        ),
+                                                      ],
+                                                    ),
+
+                                                    const SizedBox(height: 12),
+                                                    const Divider(height: 1),
+                                                    const SizedBox(height: 12),
+
+                                                    /// Hàng cuối: Hoa hồng
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        const Text(
+                                                          "Hoa hồng:",
+                                                          style: TextStyle(fontSize: 14, color: Colors.grey),
+                                                        ),
+                                                        Text(
+                                                          NumberFormat.currency(
+                                                            locale: 'vi_VN',
+                                                            symbol: '₫',
+                                                            decimalDigits: 0,
+                                                          ).format(commission),
+                                                          style: TextStyle(
+                                                            fontSize: 16,
+                                                            color: pinkColor,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ],
                                                 ),
-                                              Expanded(
-                                                child: Container(),
                                               ),
-                                              Text(
-                                                NumberFormat.currency(
-                                                  locale: 'vi_VN',
-                                                  symbol: '₫',
-                                                  decimalDigits: 0,
-                                                ).format(commission),
-                                                style: TextStyle(
-                                                  color: pinkColor,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            );
-                          }).toList(),
+                                            ),
+                                          );
+
+
+                                        }).toList(),
+                                      );
+                                    }).toList(),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
                         ],
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
               ],
             );
@@ -3132,6 +3434,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       },
     );
   }
+
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(
@@ -4540,8 +4843,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     mainColor,
                   ),
                   _buildSalaryDetailRow(
-                    'Số ngày làm việc',
-                    '${salaryData['workedDays']}/${salaryData['totalWorkdays']} ngày',
+                    'Số ca làm việc',
+                    '${salaryData['workedDays']}/${salaryData['totalWorkdays']} ca',
                     mainColor,
                   ),
                   _buildSalaryDetailRow(

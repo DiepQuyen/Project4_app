@@ -64,6 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
+    print("login");
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -142,7 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Beauty Salon Staff',
+                          'Beauty Spa Staff',
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,

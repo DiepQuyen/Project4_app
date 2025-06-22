@@ -1,7 +1,13 @@
 import 'package:employee_app/screens/login_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize date formatting - use your app's locale or 'en_US' as default
+  await initializeDateFormatting();
+
   runApp(const MyApp());
 }
 

@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/attendance_record.dart';
 import 'auth_service.dart';
 
 class AttendanceService {
-  static const String baseUrl = 'http://10.0.2.2:8080';
+  static const String baseUrl = 'https://sparlex.up.railway.app';
   // Get network information
   static Future<Map<String, dynamic>> _getNetworkInfo() async {
     try {
@@ -193,4 +195,38 @@ class AttendanceService {
       return {'error': 'Exception when loading work status: $e', 'success': false};
     }
   }
+  static Future<List<AttendanceRecord>> fetchAttendanceHistory({
+    required int userId,
+    int? year,
+    int? month,
+    String? status,
+  }) async {
+    final Map<String, String> queryParams = {
+      'userId': userId.toString(),
+    };
+
+    if (year != null) queryParams['year'] = year.toString();
+    if (month != null) queryParams['month'] = month.toString();
+    if (status != null && status != 'Tất cả') queryParams['status'] = status;
+
+    final uri = Uri(
+      scheme: 'http',
+      host: '10.0.2.2',
+      port: 8080,
+      path: '/api/v1/admin/attendance/history',
+      queryParameters: queryParams,
+    );
+
+    final response = await http.get(uri);
+
+    if (response.statusCode == 200) {
+      print("Response body: ${response.body}");
+      final jsonBody = jsonDecode(response.body);
+      final List data = jsonBody['data'];
+      return data.map((e) => AttendanceRecord.fromJson(e)).toList();
+    } else {
+      throw Exception('Failed to load attendance history');
+    }
+  }
+
 }
