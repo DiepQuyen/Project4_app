@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:salomon_bottom_bar/salomon_bottom_bar.dart';
-
 import '../services/attendance_service.dart';
 import '../services/auth_service.dart';
 import '../services/order_service.dart';
@@ -681,174 +680,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         final schedules = snapshot.data ?? [];
 
-        if (schedules.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
-                const SizedBox(height: 16),
-                Text(
-                  'Không có lịch làm việc',
-                  style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          );
-        }
-
-        // Group schedules by date
-        final Map<String, List<Map<String, dynamic>>> schedulesByDate = {};
-        for (var schedule in schedules) {
-          final date = schedule['formattedDate'] as String;
-          if (!schedulesByDate.containsKey(date)) {
-            schedulesByDate[date] = [];
-          }
-          schedulesByDate[date]!.add(schedule);
-        }
-
-        return
-
-          ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // Legend
-            const SizedBox(height: 16),
-
-            // Schedule cards
-            ...schedulesByDate.entries.map((entry) {
-              final date = entry.key;
-              final daySchedules = entry.value;
-              final firstSchedule = daySchedules.first;
-              final weekday = firstSchedule['weekday'] as String;
-
-              return Card(
-                margin: const EdgeInsets.only(bottom: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 2,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: mainColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              weekday.substring(0, 3).toUpperCase(),
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: mainColor,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            date,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      ...daySchedules.map((schedule) {
-                        final shift = schedule['shift'] as String;
-                        final checkIn = schedule['checkInTime'] as String;
-                        final checkOut = schedule['checkOutTime'] as String;
-                        final status = schedule['status'] as String;
-
-                        Color statusColor;
-                        IconData statusIcon;
-
-                        switch (status) {
-                          case 'On Time':
-                            statusColor = Colors.green;
-                            statusIcon = Icons.check_circle;
-                            break;
-                          case 'Late':
-                            statusColor = Colors.orange;
-                            statusIcon = Icons.warning;
-                            break;
-                          case 'Absent':
-                            statusColor = Colors.red;
-                            statusIcon = Icons.cancel;
-                            break;
-                          case 'Working':
-                            statusColor = Colors.blue;
-                            statusIcon = Icons.work;
-                            break;
-                          default:
-                            statusColor = Colors.grey;
-                            statusIcon = Icons.schedule;
-                        }
-
-                        return Container(
-                          padding: const EdgeInsets.all(12),
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[100],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(statusIcon, color: statusColor),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Ca $shift',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text('$checkIn - $checkOut'),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  status,
-                                  style: TextStyle(
-                                    color: statusColor,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ],
-        );
+        return _WorkScheduleContent(schedules: schedules);
       },
     );
   }
+
   Widget _buildTodayServices() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -4930,5 +4766,265 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       default:
         return '';
     }
+  }
+}
+
+class _WorkScheduleContent extends StatefulWidget {
+  final List<Map<String, dynamic>> schedules;
+
+  const _WorkScheduleContent({required this.schedules});
+
+  @override
+  State<_WorkScheduleContent> createState() => _WorkScheduleContentState();
+}
+
+class _WorkScheduleContentState extends State<_WorkScheduleContent> {
+  int selectedMonth = 0; // 0 = tất cả
+  int selectedYear = 0;  // 0 = tất cả
+  final Color mainColor = const Color(0xFFFDB5B9);
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    selectedMonth = now.month;
+    selectedYear = now.year;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredSchedules = widget.schedules.where((schedule) {
+      final date = schedule['date'] as DateTime;
+      final matchMonth = selectedMonth == 0 || date.month == selectedMonth;
+      final matchYear = selectedYear == 0 || date.year == selectedYear;
+      return matchMonth && matchYear;
+    }).toList();
+
+    final Map<String, List<Map<String, dynamic>>> schedulesByDate = {};
+    for (var schedule in filteredSchedules) {
+      final date = schedule['formattedDate'] as String;
+      schedulesByDate.putIfAbsent(date, () => []).add(schedule);
+    }
+
+    return Column(
+      children: [
+        // 🔽 Bộ lọc tháng/năm
+        Padding(
+          padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
+          child: Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Chọn tháng
+                  Row(
+                    children: [
+                      const Text('Tháng:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
+                      DropdownButton<int>(
+                        value: selectedMonth,
+                        underline: const SizedBox(),
+                        items: [
+                          const DropdownMenuItem(value: 0, child: Text('Tất cả')),
+                          ...List.generate(12, (i) => i + 1)
+                              .map((m) => DropdownMenuItem(value: m, child: Text('Tháng $m')))
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => selectedMonth = value);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  // Chọn năm
+                  Row(
+                    children: [
+                      const Text('Năm:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
+                      DropdownButton<int>(
+                        value: selectedYear,
+                        underline: const SizedBox(),
+                        items: [
+                          const DropdownMenuItem(value: 0, child: Text('Tất cả')),
+                          ..._buildAvailableYears(widget.schedules)
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => selectedYear = value);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // 🔽 Danh sách lịch làm việc
+        Expanded(
+          child: filteredSchedules.isEmpty
+              ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
+                const SizedBox(height: 16),
+                Text(
+                  (selectedMonth == 0 && selectedYear == 0)
+                      ? 'Không có lịch làm việc nào'
+                      : 'Không có lịch làm việc trong tháng $selectedMonth/$selectedYear',
+                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          )
+              : ListView(
+            padding: const EdgeInsets.all(16),
+            children: schedulesByDate.entries.map((entry) {
+              final date = entry.key;
+              final daySchedules = entry.value;
+              final weekday = daySchedules.first['weekday'] as String;
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: mainColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              weekday.substring(0, 3).toUpperCase(),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: mainColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            date,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      ...daySchedules.map((schedule) {
+                        final shift = schedule['shift'] as String;
+                        final checkIn = schedule['checkInTime'] as String;
+                        final checkOut = schedule['checkOutTime'] as String;
+                        final status = schedule['status'] as String;
+
+                        Color statusColor;
+                        IconData statusIcon;
+
+                        switch (status) {
+                          case 'On Time':
+                            statusColor = Colors.green;
+                            statusIcon = Icons.check_circle;
+                            break;
+                          case 'Late':
+                            statusColor = Colors.orange;
+                            statusIcon = Icons.warning;
+                            break;
+                          case 'Absent':
+                            statusColor = Colors.red;
+                            statusIcon = Icons.cancel;
+                            break;
+                          case 'Working':
+                            statusColor = Colors.blue;
+                            statusIcon = Icons.work;
+                            break;
+                          default:
+                            statusColor = Colors.grey;
+                            statusIcon = Icons.schedule;
+                        }
+
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(statusIcon, color: statusColor),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Ca $shift',
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    Text('$checkIn - $checkOut'),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  status,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<DropdownMenuItem<int>> _buildAvailableYears(List<Map<String, dynamic>> schedules) {
+    final years = schedules
+        .map((e) => (e['date'] as DateTime).year)
+        .toSet()
+        .toList()
+      ..sort();
+    return years
+        .map((y) => DropdownMenuItem<int>(value: y, child: Text('$y')))
+        .toList();
   }
 }
