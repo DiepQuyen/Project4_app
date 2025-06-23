@@ -54,7 +54,7 @@ class SalaryService {
       );
 
       if (response.statusCode == 200) {
-        print("Response body: ${response.body}");
+        print("Response body salary: ${response.body}");
         final data = json.decode(response.body);
 
         return {

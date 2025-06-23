@@ -464,7 +464,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       }
 
                       // Get shift time
-                      final shiftTime = shift == 'Sáng' ? '08:00 - 12:00' : '13:00 - 17:30';
+                      final shiftTime = RegExp(r'\((.*?)\)').firstMatch(shift)?.group(1) ?? 'Không rõ';
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -3139,7 +3139,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                           final timeDisplay =
                                               order['timeDisplay'] ?? '';
                                           final commission =
-                                              order['commission'] ?? 0;
+                                              order['commission'] * 10 / 100 ?? 0;
                                           final status = order['status'] ?? '';
 
                                           return Card(

@@ -108,6 +108,7 @@ class OrderService {
     final response = await http.get(url);
 
     if (response.statusCode == 200) {
+      print("Response body tab 2: ${response.body}");
       final Map<String, dynamic> jsonData = json.decode(response.body);
 
       // Đảm bảo chỉ lấy phần data thực sự

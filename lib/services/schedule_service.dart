@@ -101,6 +101,7 @@ class ScheduleService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        print("Response body today : ${response.body}");
         return {
           'hasShift': data['hasShift'],
           'schedules': data['schedules'],
