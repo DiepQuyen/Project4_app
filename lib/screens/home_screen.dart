@@ -432,10 +432,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   final schedules = (data['schedules'] as List<dynamic>);
                   return Column(
                     children: schedules.map((schedule) {
-                      final shift = schedule['shift'] as String;
-                      final status = schedule['status'] as String;
-                      final checkIn = schedule['checkInTime'] as String;
-                      final checkOut = schedule['checkOutTime'] as String;
+                      final shift = schedule['shift'] as String? ?? '';
+                      final checkIn = schedule['checkInTime'] as String? ?? '';
+                      final checkOut = schedule['checkOutTime'] as String? ?? '';
+                      final status = schedule['status'] as String? ?? '';
 
                       // Status colors and icons
                       Color statusColor;
@@ -989,7 +989,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       if (response.statusCode == 200) {
         // Parse dữ liệu JSON
         final data = json.decode(response.body);
-        print("Response body: $data");
+        print("Response body service today: $data");
 
         // Khởi tạo kết quả
         final Map<String, List<Map<String, dynamic>>> result = {};
