@@ -103,7 +103,7 @@ class OrderService {
     }
   }
   static Future<Map<String, List<Map<String, dynamic>>>> getMonthlyHistory(int userId) async {
-    final url = Uri.parse('${baseUrl}/api/v1/serviceHistory/monthly-history?userId=$userId');
+    final url = Uri.parse('${baseUrl}/api/v1/services/monthly-history?userId=$userId');
 
     final response = await http.get(url);
 
