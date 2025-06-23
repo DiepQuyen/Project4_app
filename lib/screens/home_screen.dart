@@ -4794,7 +4794,11 @@ class _WorkScheduleContentState extends State<_WorkScheduleContent> {
   @override
   Widget build(BuildContext context) {
     final filteredSchedules = widget.schedules.where((schedule) {
-      final date = schedule['date'] as DateTime;
+      // Convert the string date to DateTime
+      final date = schedule['date'] is String
+          ? DateTime.parse(schedule['date'])
+          : schedule['date'] as DateTime;
+
       final matchMonth = selectedMonth == 0 || date.month == selectedMonth;
       final matchYear = selectedYear == 0 || date.year == selectedYear;
       return matchMonth && matchYear;
@@ -4803,6 +4807,7 @@ class _WorkScheduleContentState extends State<_WorkScheduleContent> {
     final Map<String, List<Map<String, dynamic>>> schedulesByDate = {};
     for (var schedule in filteredSchedules) {
       final date = schedule['formattedDate'] as String;
+
       schedulesByDate.putIfAbsent(date, () => []).add(schedule);
     }
 
@@ -4909,7 +4914,7 @@ class _WorkScheduleContentState extends State<_WorkScheduleContent> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              weekday.substring(0, 3).toUpperCase(),
+                              weekday.toUpperCase(),
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: mainColor,
@@ -4928,10 +4933,10 @@ class _WorkScheduleContentState extends State<_WorkScheduleContent> {
                       ),
                       const SizedBox(height: 16),
                       ...daySchedules.map((schedule) {
-                        final shift = schedule['shift'] as String;
-                        final checkIn = schedule['checkInTime'] as String;
-                        final checkOut = schedule['checkOutTime'] as String;
-                        final status = schedule['status'] as String;
+                        final shift = schedule['shift'] as String? ?? '';
+                        final checkIn = schedule['checkInTime'] as String? ?? '';
+                        final checkOut = schedule['checkOutTime'] as String? ?? '';
+                        final status = schedule['status'] as String? ?? '';
 
                         Color statusColor;
                         IconData statusIcon;
@@ -5023,8 +5028,6 @@ class _WorkScheduleContentState extends State<_WorkScheduleContent> {
         .toSet()
         .toList()
       ..sort();
-    return years
-        .map((y) => DropdownMenuItem<int>(value: y, child: Text('$y')))
-        .toList();
+    return years.map((y) => DropdownMenuItem<int>(value: y, child: Text('$y'))).toList();
   }
 }
