@@ -10,7 +10,7 @@ import '../models/attendance_record.dart';
 import 'auth_service.dart';
 
 class AttendanceService {
-  static const String baseUrl = 'http://10.0.2.2:8080';
+  static const String baseUrl = 'https://sparlex.up.railway.app';
   // Get network information
   static Future<Map<String, dynamic>> _getNetworkInfo() async {
     try {
@@ -209,13 +209,11 @@ class AttendanceService {
     if (month != null) queryParams['month'] = month.toString();
     if (status != null && status != 'Tất cả') queryParams['status'] = status;
 
-    final uri = Uri(
-      scheme: 'http',
-      host: '10.0.2.2',
-      port: 8080,
-      path: '/api/v1/admin/attendance/history',
-      queryParameters: queryParams,
+    final uri = Uri.parse(
+      '${baseUrl}/api/v1/admin/attendance/history'
+          + '?' + Uri(queryParameters: queryParams).query,
     );
+
 
     final response = await http.get(uri);
 
