@@ -10,7 +10,7 @@ import '../models/attendance_record.dart';
 import 'auth_service.dart';
 
 class AttendanceService {
-  static const String baseUrl = 'https://sparlex.up.railway.app';
+  static const String baseUrl = 'http://10.0.2.2:8080';
   // Get network information
   static Future<Map<String, dynamic>> _getNetworkInfo() async {
     try {
@@ -195,11 +195,34 @@ class AttendanceService {
       return {'error': 'Exception when loading work status: $e', 'success': false};
     }
   }
+  static Future<String> getRateAttendance() async {
+    try {
+      // Get userId from current session
+      final userId = AuthService.getCurrentUser()?['id'];
+      if (userId == null) {
+        return "";
+      }
+
+      final response = await http.get(
+        Uri.parse('${baseUrl}/api/v1/admin/attendance/punctuality-rate/$userId'),
+        // headers: await ApiConfig.getHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        return response.body;
+      } else {
+        return "";
+      }
+    } catch (e) {
+      return "";
+    }
+  }
   static Future<List<AttendanceRecord>> fetchAttendanceHistory({
     required int userId,
     int? year,
     int? month,
     String? status,
+    int? take,
   }) async {
     final Map<String, String> queryParams = {
       'userId': userId.toString(),
@@ -208,12 +231,12 @@ class AttendanceService {
     if (year != null) queryParams['year'] = year.toString();
     if (month != null) queryParams['month'] = month.toString();
     if (status != null && status != 'Tất cả') queryParams['status'] = status;
+    if (take != null && take > 0) queryParams['take'] = take.toString();
 
     final uri = Uri.parse(
       '${baseUrl}/api/v1/admin/attendance/history'
           + '?' + Uri(queryParameters: queryParams).query,
     );
-
 
     final response = await http.get(uri);
 

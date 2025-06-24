@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 
 class ScheduleService {
   static final Random _random = Random();
-  static const String baseUrl = 'https://sparlex.up.railway.app';
+  static const String baseUrl = 'http://10.0.2.2:8080';
 
   static Future<List<Map<String, dynamic>>> getUserSchedule() async {
     try {
@@ -101,7 +101,6 @@ class ScheduleService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print("Response body today : ${response.body}");
         return {
           'hasShift': data['hasShift'],
           'schedules': data['schedules'],

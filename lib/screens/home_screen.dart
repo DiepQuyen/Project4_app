@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -32,6 +33,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   DateTime? _checkinTime;
   String? _selectedMonth;
   DateTime? _checkoutTime;
+  String? rateAttendance;
+  String _selectedView = 'week'; // 'week', 'month', 'year'
+  late Future<List<dynamic>> _combinedDataFuture;
   late AnimationController _animController;
   final List<Map<String, dynamic>> _recentActivities = [];
   bool _isProcessingAttendance = false;
@@ -129,7 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           const SizedBox(height: 16),
           _buildSummaryCards(),
 
-          // Weekly Stats
+          // Weekly Stats -> done
           const SizedBox(height: 16),
           _buildWeeklyStats(),
 
@@ -988,7 +992,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
       if (response.statusCode == 200) {
         // Parse dữ liệu JSON
-        print("Response body service today:" + response.body);
         final data = json.decode(response.body);
 
         // Khởi tạo kết quả
@@ -1116,7 +1119,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         Icon(Icons.person_outline, size: 14, color: Colors.grey[600]),
                         const SizedBox(width: 4),
                         Text(
-                          service['customerName'],
+                          service['customerName'] ?? '',
                           style: TextStyle(fontSize: 13, color: Colors.grey[700]),
                         ),
                       ],
@@ -1675,9 +1678,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     // Generate some sample data
     _generateSampleData();
-
+    _getRateAttendance();
     // Load avatar image safely
     _loadAvatarImage();
+    _combinedDataFuture = _fetchCombinedData();
   }
 
   void _loadAvatarImage() {
@@ -1692,23 +1696,46 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }));
   }
 
-  void _generateSampleData() {
-    final now = DateTime.now();
+  Future<void> _generateSampleData() async {
+    try {
+      final userId = AuthService.getCurrentUser()?['id'];
+      if (userId == null) return;
+      final now = DateTime.now();
 
-    // Create recent activities
-    for (int i = 0; i < 5; i++) {
-      final date = now.subtract(Duration(days: i));
-      final bool isOnTime = i % 3 != 1; // Make some days late
+      // Gọi API thật
+      final records = await AttendanceService.fetchAttendanceHistory(
+        userId: userId,
+        year: now.year,
+        month: now.month,
+        status: null,
+        take: 3,
+      );
 
-      _recentActivities.add({
-        'date': date,
-        'checkin': DateTime(
-            date.year, date.month, date.day, 8, isOnTime ? 0 : 25),
-        'checkout': DateTime(date.year, date.month, date.day, 17, 30 + i * 5),
-        'isOnTime': isOnTime,
-      });
+      // Gán vào danh sách recent activities (nếu dùng để hiển thị)
+      _recentActivities.clear();
+      for (var record in records) {
+        _recentActivities.add({
+          'date': record.date,
+          'checkin': record.checkInTime,
+          'checkout': record.checkOutTime,
+          'isOnTime': record.status.toLowerCase() == 'on_time',
+        });
+        print('[${record.status}]');  // In thử có khoảng trắng không
+        print(record.status.toLowerCase() == 'on_time'); // test
+
+      }
+    } catch (e) {
+      print('Error fetching attendance: $e');
     }
   }
+  Future<void> _getRateAttendance() async {
+    try {
+      rateAttendance = await AttendanceService.getRateAttendance();
+    } catch (e) {
+      print('Error fetching attendance: $e');
+    }
+  }
+
 
   @override
   void dispose() {
@@ -2057,9 +2084,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Expanded(
                 child: _buildSummaryCard(
                   icon: Icons.calendar_month,
-                  title: 'Ngày làm việc',
+                  title: 'Làm việc',
                   value: attendanceValue,
-                  subtitle: 'ngày',
+                  subtitle: 'ca',
                 ),
               ),
               const SizedBox(width: 12),
@@ -2067,7 +2094,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 child: _buildSummaryCard(
                   icon: Icons.watch_later_outlined,
                   title: 'Đúng giờ',
-                  value: '95%',
+                  value: rateAttendance ?? '',
                   subtitle: 'tỉ lệ',
                   valueColor: Colors.green,
                 ),
@@ -2079,7 +2106,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-
   Widget _buildWeeklyStats() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2089,91 +2115,197 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Thống kê tuần này',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 16),
-              FutureBuilder<List<dynamic>>(
-                future: _fetchCombinedData(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator()),
-                    );
-                  }
-
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Lỗi: ${snapshot.error}'));
-                  }
-
-                  final weekData = snapshot.data![0] as List<Map<String, dynamic>>;
-                  final compareMessage = snapshot.data![1] as String;
-
-                  double totalHours = 0;
-                  double maxHours = 0;
-                  for (var day in weekData) {
-                    final hours = (day['totalHours'] as num).toDouble();
-                    totalHours += hours;
-                    if (hours > maxHours) maxHours = hours;
-                  }
-                  maxHours = maxHours > 0 ? maxHours : 8;
-
-                  return Column(
+          child: StatefulBuilder(
+            builder: (context, localSetState) {
+              final views = ['tuần', 'tháng', 'năm'];
+              final viewKeys = ['week', 'month', 'year'];
+              final selectedIndex = viewKeys.indexOf(_selectedView);
+              final selectedLabel = views[selectedIndex];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: weekData.map((day) {
-                          final double hours = (day['totalHours'] as num).toDouble();
-                          final double ratio = maxHours > 0 ? (hours / maxHours) : 0;
-                          return _buildStatColumn(day['day'], ratio, hours);
-                        }).toList(),
+                      Text(
+                        'Thống kê theo $selectedLabel',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(height: 12),
-                      const Divider(),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      SizedBox(
+                        height: 25,
+                        child: ToggleButtons(
+                          isSelected: List.generate(3, (i) => i == selectedIndex),
+                          onPressed: (index) {
+                            if (_selectedView != viewKeys[index]) {
+                              _selectedView = viewKeys[index];
+                              _combinedDataFuture = _fetchCombinedData();
+                              localSetState(() {}); // chỉ rebuild phần này
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.grey[400],         // màu chữ nút chưa chọn - xám nhạt
+                          selectedColor: Colors.white,     // màu chữ nút được chọn
+                          fillColor: mainColor.withOpacity(0.9), // nền nút được chọn
+                          splashColor: mainColor.withOpacity(0.5),
+                          borderWidth: 0,
+                          borderColor: Colors.transparent,
+                          selectedBorderColor: Colors.transparent,
+                          renderBorder: false,
+                          constraints: const BoxConstraints(minWidth: 50, minHeight: 20),
+                          children: List.generate(views.length, (index) {
+                            final bool isSelected = index == selectedIndex;
+                            return Container(
+                              decoration: BoxDecoration(
+                                color: isSelected ? mainColor.withOpacity(0.9) : Colors.grey.withOpacity(0.15), // nền xám nhẹ nút chưa chọn
+                                borderRadius: BorderRadius.circular(0),
+                              ),
+                              alignment: Alignment.center,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: Text(
+                                views[index],
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  FutureBuilder<List<dynamic>>(
+                    future: _combinedDataFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Center(child: Text('Lỗi: ${snapshot.error}'));
+                      }
+
+                      final weekData = snapshot.data![0] as List<Map<String, dynamic>>;
+                      final compareMessage = snapshot.data![1] as String;
+
+                      double totalHours = 0;
+                      double maxHours = 0;
+                      for (var day in weekData) {
+                        final hours = (day['totalHours'] as num).toDouble();
+                        totalHours += hours;
+                        if (hours > maxHours) maxHours = hours;
+                      }
+                      maxHours = maxHours > 0 ? maxHours : 8;
+
+                      return Column(
                         children: [
-                          Text(
-                            'Tổng giờ làm: ${totalHours.toStringAsFixed(1)} giờ',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey[800],
-                            ),
-                          ),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: weekData.map((day) {
+                              final double hours = (day['totalHours'] as num).toDouble();
+                              final double ratio = maxHours > 0 ? (hours / maxHours) : 0;
+                              return _buildStatColumn(day['day'], ratio, hours);
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 12),
+                          const Divider(),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Icon(Icons.trending_up, size: 16, color: Colors.green),
-                              const SizedBox(width: 4),
-                              Text(
-                                compareMessage,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.w500,
+                              Padding(
+                                padding: const EdgeInsets.only(right: 12),
+                                child: Text(
+                                  'Tổng giờ làm: ${totalHours.toStringAsFixed(1)} giờ',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey[800],
+                                  ),
+                                ),
+                              ),
+                              Flexible(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.trending_up, size: 16, color: Colors.green),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        compareMessage,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.green,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        softWrap: true,
+                                        maxLines: null,
+                                        overflow: TextOverflow.visible,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
                         ],
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
+    );
+  }
+
+
+
+  Widget _buildTimeFilter() {
+    final views = ['Tuần', 'Tháng', 'Năm'];
+    final viewKeys = ['week', 'month', 'year'];
+    final selectedIndex = viewKeys.indexOf(_selectedView);
+
+    return ToggleButtons(
+      isSelected: List.generate(views.length, (index) => index == selectedIndex),
+      onPressed: (index) {
+        setState(() {
+          _selectedView = viewKeys[index];
+          _combinedDataFuture = _fetchCombinedData();
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      color: Colors.white, // 🔼 chữ chưa chọn rõ hơn
+      selectedColor: Colors.white,
+      fillColor: mainColor.withOpacity(0.9),
+      splashColor: mainColor.withOpacity(0.5),
+      borderWidth: 0,
+      borderColor: Colors.transparent,
+      selectedBorderColor: Colors.transparent,
+      renderBorder: false,
+      constraints: const BoxConstraints(minWidth: 50, minHeight: 30),
+      children: List.generate(views.length, (index) {
+        final bool isSelected = index == selectedIndex;
+        return Container(
+          decoration: BoxDecoration(
+            color: isSelected
+                ? mainColor.withOpacity(0.9)
+                : Colors.white.withOpacity(0.1), // 🔼 nền mờ nhẹ khi không chọn
+            borderRadius: BorderRadius.circular(10),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(
+            views[index],
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              color: Colors.white, // rõ nét hơn
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -2222,50 +2354,40 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<String> _fetchWeekComparison() async {
     final userId = AuthService.getCurrentUser()?['id'];
-    if (userId == null) {
-      throw Exception('User ID not found');
-    }
+    if (userId == null) throw Exception('User ID not found');
 
     final response = await http.get(
-      Uri.parse('${OrderService.baseUrl}/api/v1/admin/attendance/compare-week/$userId'),
-      headers: {
-        'Content-Type': 'application/json',
-        // Authorization nếu cần
-      },
+      Uri.parse('${OrderService.baseUrl}/api/v1/admin/attendance/compare/$userId?type=$_selectedView'),
+      headers: {'Content-Type': 'application/json'},
     );
 
     if (response.statusCode == 200) {
-      // Ví dụ: response.body = {"message": "tăng 5% so với tuần trước"}
-      final data = response.body;
-      return data;
+      return response.body;
     } else {
-      throw Exception('Lỗi khi lấy dữ liệu so sánh tuần');
+      throw Exception('Lỗi khi lấy dữ liệu so sánh');
     }
   }
+
 
   Future<List<Map<String, dynamic>>> _fetchWeeklyStats() async {
     try {
       final userId = AuthService.getCurrentUser()?['id'];
-      if (userId == null) {
-        throw Exception('User ID not found');
-      }
+      if (userId == null) throw Exception('User ID not found');
 
       final response = await http.get(
-        Uri.parse('${OrderService.baseUrl}/api/v1/admin/attendance/find-by-user/$userId'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        Uri.parse('${OrderService.baseUrl}/api/v1/admin/attendance/find-by-user/$userId?type=$_selectedView'),
+        headers: {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         return List<Map<String, dynamic>>.from(data);
       } else {
-        throw Exception('Failed to load weekly stats: ${response.statusCode}');
+        throw Exception('Failed to load stats: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error fetching weekly stats: $e');
-      throw Exception('Failed to load weekly stats: $e');
+      print('Error: $e');
+      throw Exception('Failed to load stats: $e');
     }
   }
 
