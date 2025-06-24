@@ -988,8 +988,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
       if (response.statusCode == 200) {
         // Parse dữ liệu JSON
+        print("Response body service today:" + response.body);
         final data = json.decode(response.body);
-        print("Response body service today: $data");
 
         // Khởi tạo kết quả
         final Map<String, List<Map<String, dynamic>>> result = {};
@@ -1305,7 +1305,66 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         const SizedBox(width: 12),
                         if (!isCompleted)
                           ElevatedButton(
-                            onPressed: isUpdating ? null : () async {
+                            onPressed: isUpdating
+                                ? null
+                                : () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (context) => AlertDialog(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+                                  contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                                  title: Row(
+                                    children: [
+                                      Icon(Icons.help_outline, color: mainColor),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        'Xác nhận hoàn thành',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                          color: Colors.black87,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  content: Text(
+                                    'Bạn chắc chắn đã hoàn thành dịch vụ này?',
+                                    style: TextStyle(fontSize: 15, color: Colors.black87),
+                                  ),
+                                  actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).pop(false),
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      child: Text(
+                                        'Hủy',
+                                        style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.of(context).pop(true),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: mainColor,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      child: Text(
+                                        'Xác nhận',
+                                        style: TextStyle(fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirm != true) return;
+
                               setState(() {
                                 isUpdating = true;
                               });
@@ -1313,10 +1372,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               print(service);
                               final result = await _markServiceAsCompleted(service['id']);
 
-                              // First close the dialog
                               Navigator.pop(context);
 
-                              // Then show the snackbar notification after dialog is closed
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Row(
@@ -1336,16 +1393,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               );
 
                               if (result['success']) {
-                                setState(() {});
-
-                                // Trigger a full rebuild of the main screen
                                 if (mounted) {
                                   setState(() {
-                                    // Update the service status locally
                                     service['status'] = 'Hoàn thành';
                                   });
-
-                                  // Force refresh of the home page data
                                   _refreshHomeData();
                                 }
                               }
@@ -1426,6 +1477,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ],
     );
   }
+
   Future<Map<String, dynamic>> _markServiceAsCompleted(int serviceId) async {
     try {
       final userId = AuthService.getCurrentUser()?['id'];
