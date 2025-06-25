@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 class SalaryService {
-  static const String baseUrl = 'http://10.0.2.2:8080';
+  static const String baseUrl = 'https://sparlex.up.railway.app';
 
   // Mock salary calculation service
   // static Future<Map<String, dynamic>> getEstimatedSalary(int userId) async {
