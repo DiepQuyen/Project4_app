@@ -64,7 +64,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    print("login");
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {

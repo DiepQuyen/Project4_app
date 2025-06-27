@@ -2131,44 +2131,48 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         'Thống kê theo $selectedLabel',
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
-                      SizedBox(
-                        height: 25,
-                        child: ToggleButtons(
-                          isSelected: List.generate(3, (i) => i == selectedIndex),
-                          onPressed: (index) {
-                            if (_selectedView != viewKeys[index]) {
-                              _selectedView = viewKeys[index];
-                              _combinedDataFuture = _fetchCombinedData();
-                              localSetState(() {}); // chỉ rebuild phần này
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(20),
-                          color: Colors.grey[400],         // màu chữ nút chưa chọn - xám nhạt
-                          selectedColor: Colors.white,     // màu chữ nút được chọn
-                          fillColor: mainColor.withOpacity(0.9), // nền nút được chọn
-                          splashColor: mainColor.withOpacity(0.5),
-                          borderWidth: 0,
-                          borderColor: Colors.transparent,
-                          selectedBorderColor: Colors.transparent,
-                          renderBorder: false,
-                          constraints: const BoxConstraints(minWidth: 50, minHeight: 20),
-                          children: List.generate(views.length, (index) {
-                            final bool isSelected = index == selectedIndex;
-                            return Container(
-                              decoration: BoxDecoration(
-                                color: isSelected ? mainColor.withOpacity(0.9) : Colors.grey.withOpacity(0.15), // nền xám nhẹ nút chưa chọn
-                                borderRadius: BorderRadius.circular(0),
-                              ),
-                              alignment: Alignment.center,
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text(
-                                views[index],
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                              ),
-                            );
-                          }),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 0),
+                          child: ToggleButtons(
+                            isSelected: List.generate(3, (i) => i == selectedIndex),
+                            onPressed: (index) {
+                              if (_selectedView != viewKeys[index]) {
+                                _selectedView = viewKeys[index];
+                                _combinedDataFuture = _fetchCombinedData();
+                                localSetState(() {});
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            color: Colors.grey[400],
+                            selectedColor: Colors.white,
+                            fillColor: mainColor.withOpacity(0.9),
+                            splashColor: mainColor.withOpacity(0.5),
+                            borderWidth: 0,
+                            borderColor: Colors.transparent,
+                            selectedBorderColor: Colors.transparent,
+                            renderBorder: false,
+                            constraints: const BoxConstraints(minWidth: 50, minHeight: 16, maxHeight: 30), // đảm bảo nút đủ to
+                            children: List.generate(views.length, (index) {
+                              final isSelected = index == selectedIndex;
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? mainColor.withOpacity(0.9) : Colors.grey.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(0),
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  views[index],
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                                ),
+                              );
+                            }),
+                          ),
                         ),
                       ),
+
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -4960,9 +4964,22 @@ class _WorkScheduleContentState extends State<_WorkScheduleContent> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    selectedMonth = now.month;
-    selectedYear = now.year;
+
+    final years = widget.schedules
+        .map((e) {
+      final date = e['date'];
+      if (date is String) return DateTime.parse(date).year;
+      if (date is DateTime) return date.year;
+      return 0;
+    })
+        .where((y) => y != 0)
+        .toSet()
+        .toList();
+
+    years.sort();
+
+    selectedYear = years.isNotEmpty ? DateTime.now().year : 0;  // Chỉ chọn năm hiện tại nếu có data, còn không chọn 0
+    selectedMonth = DateTime.now().month;
   }
 
   @override
