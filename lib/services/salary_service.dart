@@ -21,7 +21,7 @@ class SalaryService {
   //       print("Response body: ${response.body}");
   //       final now = DateTime.now();
   //       final data = json.decode(response.body);
-  //       final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
+  //       final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'VND', decimalDigits: 0);
   //
   //       return {
   //         'baseSalary': data.baseSalary,
@@ -44,7 +44,7 @@ class SalaryService {
 
   static Future<Map<String, dynamic>> getEstimatedSalary(int userId) async {
     final now = DateTime.now();
-    final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
+    final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'VND', decimalDigits: 0);
     try {
       final response = await http.get(
         Uri.parse('${baseUrl}/api/v1/user/accounts/salary/estimated?userId=$userId'),

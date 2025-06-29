@@ -637,7 +637,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         trailing: Text(
                           NumberFormat.currency(
                             locale: 'vi_VN',
-                            symbol: '₫',
+                            symbol: 'VND',
                             decimalDigits: 0,
                           ).format(service['price']),
                           style: TextStyle(
@@ -1272,7 +1272,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         const SizedBox(height: 16),
                         _buildEnhancedDetailRow(
                           'Hoa hồng',
-                          NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0)
+                          NumberFormat.currency(locale: 'vi_VN', symbol: 'VND', decimalDigits: 0)
                               .format(service['commission'] ?? 0),
                           Icons.monetization_on,
                           valueColor: Colors.green.shade800,
@@ -3213,7 +3213,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                               Text(
                                 NumberFormat.currency(
                                   locale: 'vi_VN',
-                                  symbol: '₫',
+                                  symbol: 'VND',
                                   decimalDigits: 0,
                                 ).format(monthSummary['totalCommission'] ?? 0),
                                 style: TextStyle(
@@ -3410,7 +3410,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                                         Text(
                                                           NumberFormat.currency(
                                                             locale: 'vi_VN',
-                                                            symbol: '₫',
+                                                            symbol: 'VND',
                                                             decimalDigits: 0,
                                                           ).format(commission),
                                                           style: TextStyle(
@@ -3831,7 +3831,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 // Commission
                 Text(
-                  NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0)
+                  NumberFormat.currency(locale: 'vi_VN', symbol: 'VND', decimalDigits: 0)
                       .format(order['commission']),
                   style: const TextStyle(
                     fontSize: 16,
@@ -4853,7 +4853,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 16),
                   _buildSalaryDetailRow(
                     'Lương cơ bản',
-                    '${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(salaryData['baseSalary'])}',
+                    '${NumberFormat.currency(locale: 'vi_VN', symbol: 'VND', decimalDigits: 0).format(salaryData['baseSalary'])}',
                     mainColor,
                   ),
                   _buildSalaryDetailRow(
@@ -4868,7 +4868,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                   _buildSalaryDetailRow(
                     'Lương hoa hồng',
-                    '${NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0).format(salaryData['totalTip'])}',
+                    '${NumberFormat.currency(locale: 'vi_VN', symbol: 'VND', decimalDigits: 0).format(salaryData['totalTip'])}',
                     Colors.orange,
                     isLast: true,
                   ),
