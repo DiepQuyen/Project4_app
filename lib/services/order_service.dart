@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 class OrderService {
-  static const String baseUrl = 'https://sparlex.up.railway.app';
+  static const String baseUrl = 'http://10.0.2.2:8080';
   static final Random _random = Random();
   static final List<String> _services = [
     'Cắt tóc nam', 'Cắt tóc nữ', 'Uốn tóc', 'Nhuộm tóc',
