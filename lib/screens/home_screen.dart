@@ -3317,7 +3317,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                                           final timeDisplay =
                                               order['timeDisplay'] ?? '';
                                           final commission =
-                                              order['commission'] * 10 / 100 ?? 0;
+                                              order['commission'] ?? 0;
                                           final status = order['status'] ?? '';
 
                                           return Card(
